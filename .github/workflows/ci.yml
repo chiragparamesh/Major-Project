@@ -1,0 +1,54 @@
+name: MLBFD CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  test:
+    name: Run Pytest & Security Checks
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libglib2.0-0
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run Test Suite
+        env:
+          MLBFD_SECRET_KEY: ci_secret_key_mlbfd_0123456789abcdef
+          JWT_SECRET_KEY: ci_jwt_secret_key_mlbfd_0123456789abcdef
+          HASH_PEPPER: ci_pepper_key_mlbfd_0123456789abcdef
+          EMAIL_DRY_RUN: "True"
+        run: |
+          pytest -v
+
+      - name: Run Latency Benchmark Verification
+        env:
+          MLBFD_SECRET_KEY: ci_secret_key_mlbfd_0123456789abcdef
+          JWT_SECRET_KEY: ci_jwt_secret_key_mlbfd_0123456789abcdef
+          HASH_PEPPER: ci_pepper_key_mlbfd_0123456789abcdef
+          EMAIL_DRY_RUN: "True"
+        run: |
+          python latency_benchmark.py --iterations 10
+

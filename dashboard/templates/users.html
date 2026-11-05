@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-title">
+        <h2>User Profiles</h2>
+        <p>Monitor virtual balances, device tokens, and toggle account administrative locks</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-primary" onclick="loadUsers()"><i class="fa-solid fa-rotate"></i> Refresh Profiles</button>
+    </div>
+</div>
+
+<!-- Users Table Card -->
+<div class="card table-card">
+    <div class="table-header">
+        <h3>System Registered Accounts</h3>
+    </div>
+    
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>DB ID</th>
+                    <th>User ID</th>
+                    <th>Phone (Masked)</th>
+                    <th>Email (Masked)</th>
+                    <th>Virtual Balance</th>
+                    <th>Account Status</th>
+                    <th>Failed PIN Tries</th>
+                    <th>Last Active</th>
+                    <th>Created At</th>
+                    <th>Admin Lock Toggle</th>
+                </tr>
+            </thead>
+            <tbody id="users-table-body">
+                <tr>
+                    <td colspan="10" style="text-align: center; color: var(--text-muted);">Fetching profiles...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadUsers() {
+        try {
+            const res = await fetch('/admin/api/users');
+            const data = await res.json();
+            
+            if (data.success) {
+                displayUsers(data.users);
+            }
+        } catch (err) {
+            console.error("Failed to load user profiles:", err);
+        }
+    }
+
+    function displayUsers(users) {
+        const tbody = document.getElementById('users-table-body');
+        tbody.innerHTML = '';
+        
+        if (users.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-muted);">No users registered in system yet.</td></tr>`;
+            return;
+        }
+
+        users.forEach(u => {
+            const row = document.createElement('tr');
+            
+            const lockStatusTag = u.is_locked ? 
+                '<span class="verdict-tag blocked"><i class="fa-solid fa-lock"></i> Locked</span>' : 
+                '<span class="verdict-tag approved"><i class="fa-solid fa-lock-open"></i> Active</span>';
+                
+            row.innerHTML = `
+                <td>#${u.id}</td>
+                <td><strong>${esc(u.user_id)}</strong></td>
+                <td><code>${esc(u.phone_number || 'N/A')}</code></td>
+                <td><code>${esc(u.email || 'N/A')}</code></td>
+                <td>₹${u.balance.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                <td>${lockStatusTag}</td>
+                <td>${u.failed_attempts} / 5</td>
+                <td>${u.last_active !== 'Never' ? new Date(u.last_active).toLocaleString() : 'Never'}</td>
+                <td>${new Date(u.created_at).toLocaleDateString()}</td>
+                <td>
+                    <label class="switch">
+                        <input type="checkbox" class="lock-toggle" data-user="${esc(u.user_id)}" ${u.is_locked ? 'checked' : ''}>
+                        <span class="slider"></span>
+                    </label>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+        // data attribute + listener (no user text inside an inline JS handler)
+        tbody.querySelectorAll('.lock-toggle').forEach(cb => {
+            cb.addEventListener('change', () => toggleLock(cb.dataset.user, cb.checked));
+        });
+    }
+
+    async function toggleLock(userId, lockState) {
+        try {
+            const res = await fetch(`/admin/api/users/${encodeURIComponent(userId)}/toggle-lock`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ lock: lockState })
+            });
+            const data = await res.json();
+            if (data.success) {
+                // Refresh table to reflect changes
+                loadUsers();
+            } else {
+                alert("Error toggling account lock: " + data.message);
+                loadUsers(); // revert UI state
+            }
+        } catch (err) {
+            console.error("Lock toggle failed:", err);
+            loadUsers();
+        }
+    }
+
+    window.onload = function() {
+        loadUsers();
+    }
+</script>
+{% endblock %}

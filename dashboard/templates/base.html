@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLBFD Admin Portal</title>
+    <!-- Google Fonts: Outfit & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Common JS Utilities -->
+    <script src="/static/js/charts.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+    <!-- Main Stylesheet -->
+    <link rel="stylesheet" href="/static/css/main.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <i class="fa-solid fa-shield-halved brand-icon animate-pulse"></i>
+                <div class="brand-text">
+                    <h1>MLBFD</h1>
+                    <span>Fraud Detection Engine</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-menu">
+                <ul>
+                    <li class="{% if request.path in ['/admin', '/', '/admin/', '/admin/overview'] %}active{% endif %}">
+                        <a href="/admin/overview">
+                            <i class="fa-solid fa-chart-pie"></i>
+                            <span>Overview</span>
+                        </a>
+                    </li>
+                    <li class="{% if request.path == '/admin/transactions' %}active{% endif %}">
+                        <a href="/admin/transactions">
+                            <i class="fa-solid fa-receipt"></i>
+                            <span>Transactions</span>
+                        </a>
+                    </li>
+                    <li class="{% if request.path == '/admin/alerts' %}active{% endif %}">
+                        <a href="/admin/alerts">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <span>Alerts Queue</span>
+                            <span class="badge badge-danger" id="sidebar-alert-count">0</span>
+                        </a>
+                    </li>
+                    <li class="{% if request.path == '/admin/users' %}active{% endif %}">
+                        <a href="/admin/users">
+                            <i class="fa-solid fa-users"></i>
+                            <span>User Profiles</span>
+                        </a>
+                    </li>
+                    <li class="{% if request.path == '/admin/models' %}active{% endif %}">
+                        <a href="/admin/models">
+                            <i class="fa-solid fa-brain"></i>
+                            <span>Model Performance</span>
+                        </a>
+                    </li>
+                    <li class="{% if request.path == '/admin/drift' %}active{% endif %}">
+                        <a href="/admin/drift">
+                            <i class="fa-solid fa-chart-line"></i>
+                            <span>Data Drift</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="system-status">
+                    <span class="status-indicator online"></span>
+                    <span>System Online</span>
+                </div>
+                <div class="version">v2.0 (Build-Scratch)</div>
+            </div>
+        </aside>
+
+        <!-- Main Body -->
+        <main class="main-content">
+            <!-- Demo Virtual Money Banner -->
+            <div class="demo-banner" style="background: linear-gradient(90deg, #6200ee 0%, #03dac6 100%); color: #0a0616; padding: 6px 16px; font-weight: 700; font-size: 13px; text-align: center; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+                <i class="fa-solid fa-flask"></i>
+                <span>MLBFD demo - virtual money only</span>
+            </div>
+
+            <!-- Topbar -->
+            <header class="topbar">
+                <div class="topbar-search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="global-search" placeholder="Search by UPI, Txn ID, or User...">
+                </div>
+                <div class="topbar-actions">
+                    <div class="theme-toggle" id="theme-btn">
+                        <i class="fa-solid fa-moon"></i>
+                    </div>
+                    <div class="notifications-dropdown">
+                        <i class="fa-solid fa-bell"></i>
+                        <span class="badge badge-warning" id="notif-count">0</span>
+                    </div>
+                    <div class="user-profile">
+                        <div class="profile-avatar">
+                            <span>AD</span>
+                        </div>
+                        <div class="profile-info">
+                            <span class="profile-name">Administrator</span>
+                            <span class="profile-role">NPCI Fraud Desk</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Page Body -->
+            <div class="page-body">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <!-- Common Dashboard JS Logic -->
+    <script>
+        // Fetch background counts for badge indicators
+        async function fetchBadgeCounts() {
+            try {
+                const res = await fetch('/admin/api/stats');
+                const data = await res.json();
+                if (data.success) {
+                    const alertCount = data.pending_alerts;
+                    const sidebarBadge = document.getElementById('sidebar-alert-count');
+                    const notifBadge = document.getElementById('notif-count');
+                    if (sidebarBadge) sidebarBadge.innerText = alertCount;
+                    if (notifBadge) notifBadge.innerText = alertCount;
+                    const showBadge = alertCount > 0;
+                    if (sidebarBadge) sidebarBadge.style.display = showBadge ? 'inline-flex' : 'none';
+                    if (notifBadge) notifBadge.style.display = showBadge ? 'inline-flex' : 'none';
+                }
+            } catch (err) {
+                console.error('Error fetching badge stats:', err);
+            }
+        }
+
+        // Auto-refresh stats every 15 seconds
+        fetchBadgeCounts();
+        setInterval(fetchBadgeCounts, 15000);
+
+        // Theme Toggle — persists preference to localStorage
+        const themeBtn = document.getElementById('theme-btn');
+
+        // Restore saved theme on load
+        const savedTheme = localStorage.getItem('mlbfd_admin_theme');
+        if (savedTheme === 'light') {
+            document.body.classList.add('light-theme');
+            const icon = themeBtn.querySelector('i');
+            if (icon) icon.className = 'fa-solid fa-sun';
+        }
+
+        themeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('light-theme');
+            const icon = themeBtn.querySelector('i');
+            const isLight = document.body.classList.contains('light-theme');
+            if (icon) icon.className = isLight ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+            localStorage.setItem('mlbfd_admin_theme', isLight ? 'light' : 'dark');
+        });
+
+        // Toast system for admin pages
+        function showAdminToast(message, type = 'info', duration = 4000) {
+            let container = document.getElementById('admin-toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'admin-toast-container';
+                container.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none;';
+                document.body.appendChild(container);
+            }
+            const colors = { success: '#00875a', error: '#c62828', warning: '#e65100', info: '#0277bd' };
+            const icons  = { success: 'fa-circle-check', error: 'fa-circle-exclamation', warning: 'fa-triangle-exclamation', info: 'fa-circle-info' };
+            const toast = document.createElement('div');
+            toast.style.cssText = `display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;font-size:13px;font-weight:500;color:white;min-width:280px;max-width:380px;box-shadow:0 8px 24px rgba(0,0,0,0.4);opacity:0;transform:translateX(24px);transition:opacity 0.3s,transform 0.3s;pointer-events:all;background:${colors[type]};border-left:4px solid currentColor;`;
+            toast.innerHTML = `<i class="fa-solid ${icons[type] || icons.info}" style="font-size:16px;"></i><span style="flex:1;line-height:1.4;">${message}</span>`;
+            container.appendChild(toast);
+            requestAnimationFrame(() => requestAnimationFrame(() => { toast.style.opacity = '1'; toast.style.transform = 'translateX(0)'; }));
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 350); }, duration);
+        }
+        window.showAdminToast = showAdminToast;
+</script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLBFD - User Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&family=Roboto+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- User Stylesheet -->
+    <link rel="stylesheet" href="/static/css/user.css">
+    <!-- Leaflet Map CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Immediate Authentication Guard -->
+    <script>
+        (function() {
+            var token = localStorage.getItem('mlbfd_token') || localStorage.getItem('token');
+            var userId = localStorage.getItem('mlbfd_user_id');
+            if (!token || !userId) {
+                window.location.replace('/user/login');
+            }
+        })();
+    </script>
+</head>
+<body>
+    <!-- App Container -->
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <i class="fa-solid fa-shield-halved brand-icon animate-pulse"></i>
+                <div class="brand-text">
+                    <h1>MLBFD</h1>
+                    <span>User Portal</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-menu">
+                <ul>
+                    <li class="menu-item active" id="menu-overview" onclick="switchTab('overview')">
+                        <a>
+                            <i class="fa-solid fa-house"></i>
+                            <span>Overview</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" id="menu-transfer" onclick="switchTab('transfer')">
+                        <a>
+                            <i class="fa-solid fa-paper-plane"></i>
+                            <span>Send Money</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" id="menu-receive" onclick="switchTab('receive')">
+                        <a>
+                            <i class="fa-solid fa-qrcode"></i>
+                            <span>Receive Money</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" id="menu-history" onclick="switchTab('history')">
+                        <a>
+                            <i class="fa-solid fa-receipt"></i>
+                            <span>Transaction History</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" id="menu-trusted" onclick="switchTab('trusted')">
+                        <a>
+                            <i class="fa-solid fa-address-book"></i>
+                            <span>Trusted Payees</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" id="menu-safety" onclick="switchTab('safety')">
+                        <a>
+                            <i class="fa-solid fa-shield-heart"></i>
+                            <span>Safety Center</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" id="menu-settings" onclick="switchTab('settings')">
+                        <a>
+                            <i class="fa-solid fa-gears"></i>
+                            <span>Security Settings</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <button class="btn-logout" onclick="handleLogout()">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                    <span>Sign Out</span>
+                </button>
+                <div class="system-status">
+                    <span class="status-indicator online"></span>
+                    <span>Secure Session</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Body -->
+        <main class="main-content">
+            <!-- Demo Virtual Money Banner -->
+            <div class="demo-banner" style="background: linear-gradient(90deg, #6200ee 0%, #03dac6 100%); color: #0a0616; padding: 6px 16px; font-weight: 700; font-size: 13px; text-align: center; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+                <i class="fa-solid fa-flask"></i>
+                <span>MLBFD demo - virtual money only</span>
+            </div>
+
+            <!-- Topbar -->
+            <header class="topbar">
+                <div class="topbar-welcome" style="display:flex; align-items:center; gap:0;">
+                    <!-- Mobile hamburger button -->
+                    <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <h2>Hello, <span id="header-user-id">User</span></h2>
+                </div>
+                <div class="topbar-actions">
+                    <div class="theme-toggle" id="theme-btn">
+                        <i class="fa-solid fa-moon"></i>
+                    </div>
+                    <div class="user-badge">
+                        <div class="user-avatar">
+                            <span id="user-initials">U</span>
+                        </div>
+                        <div class="user-info">
+                            <span class="user-name" id="profile-user-id">user@okaxis</span>
+                            <span class="user-role">Virtual Account</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Mobile sidebar backdrop -->
+            <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+            <!-- Page Body -->
+            <div class="page-body">
+                <!-- Tab: Overview -->
+                <div id="tab-overview" class="tab-content">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Dashboard Overview</h2>
+                            <p>Monitor your virtual balance and active transaction safety metrics</p>
+                        </div>
+                    </div>
+
+                    <!-- Stats Grid -->
+                    <div class="stats-grid">
+                        <div class="card stat-card balance-card">
+                            <div class="stat-info">
+                                <span class="stat-label">Virtual Balance</span>
+                                <div style="display: flex; align-items: center; gap: 12px; margin: 4px 0;">
+                                    <span class="stat-value" id="overview-balance" style="letter-spacing: 2px;">••••••</span>
+                                    <button class="btn-check-balance" onclick="triggerCheckBalanceSecured()" title="Check Balance">
+                                        <i class="fa-solid fa-eye" id="balance-eye-icon"></i>
+                                    </button>
+                                </div>
+                                <div class="stat-delta up">
+                                    <i class="fa-solid fa-lock"></i>
+                                    <span>PIN Protected</span>
+                                </div>
+                            </div>
+                            <div class="stat-icon brand">
+                                <i class="fa-solid fa-wallet"></i>
+                            </div>
+                        </div>
+
+                        <div class="card stat-card">
+                            <div class="stat-info">
+                                <span class="stat-label">Total Transactions</span>
+                                <span class="stat-value" id="overview-txns-count">0</span>
+                                <div class="stat-delta info">
+                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                                    <span>All Time</span>
+                                </div>
+                            </div>
+                            <div class="stat-icon info">
+                                <i class="fa-solid fa-receipt"></i>
+                            </div>
+                        </div>
+
+                        <div class="card stat-card">
+                            <div class="stat-info">
+                                <span class="stat-label">Account Security</span>
+                                <span class="stat-value text-success" id="overview-security-status">Active</span>
+                                <div class="stat-delta success">
+                                    <i class="fa-solid fa-lock"></i>
+                                    <span>Device Paired</span>
+                                </div>
+                            </div>
+                            <div class="stat-icon success">
+                                <i class="fa-solid fa-shield-check"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Split Grid -->
+                    <div class="split-grid">
+                        <div class="card table-card flex-grow-2">
+                            <div class="table-header">
+                                <h3>Recent Transactions</h3>
+                                <button class="btn btn-secondary" onclick="switchTab('history')">View All</button>
+                            </div>
+                            <div class="table-wrapper">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Recipient</th>
+                                            <th>Amount</th>
+                                            <th>Risk Score</th>
+                                            <th>Status</th>
+                                            <th>Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="overview-txns-body">
+                                        <tr>
+                                            <td colspan="5" style="text-align: center; color: var(--text-muted);">Fetching transactions...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="card chart-card flex-grow-1">
+                            <div class="chart-header">
+                                <h3>Quick Actions</h3>
+                            </div>
+                            <div class="quick-actions-panel">
+                                <button class="btn-action-tile" onclick="switchTab('transfer')">
+                                    <i class="fa-solid fa-paper-plane text-brand"></i>
+                                    <span>Send Money</span>
+                                </button>
+                                <button class="btn-action-tile" onclick="switchTab('receive')">
+                                    <i class="fa-solid fa-qrcode text-info"></i>
+                                    <span>Receive Money</span>
+                                </button>
+                                <button class="btn-action-tile" onclick="switchTab('trusted')">
+                                    <i class="fa-solid fa-address-book text-success"></i>
+                                    <span>Trusted Payees</span>
+                                </button>
+                                <button class="btn-action-tile" onclick="switchTab('safety')">
+                                    <i class="fa-solid fa-shield-heart text-warning"></i>
+                                    <span>Reputation Check</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Send Money -->
+                <div id="tab-transfer" class="tab-content" style="display: none;">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Virtual UPI Transfer Simulator</h2>
+                            <p>Initiate transactions and witness the real-time 7-layer fraud prevention system work</p>
+                        </div>
+                    </div>
+
+                    <div class="split-grid">
+                        <!-- Transfer Form Card -->
+                        <div class="card form-card">
+                            <h3>Execute Virtual Payment</h3>
+                            
+                            <!-- QR Code Link Auto-Fill Parser -->
+                            <div class="form-group" style="margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color);">
+                                <label for="txn-qr-parse"><i class="fa-solid fa-qrcode"></i> Paste UPI QR Link to Auto-Fill</label>
+                                <div class="input-wrapper">
+                                    <i class="fa-solid fa-paste input-icon"></i>
+                                    <input type="text" id="txn-qr-parse" placeholder="Paste upi://pay?... here" oninput="parseUpiQrLink()">
+                                </div>
+                                <small class="form-help">Paste a UPI payment link copied from another user's dashboard to fill payee details instantly.</small>
+                            </div>
+
+                            <form id="transfer-form" onsubmit="executeTransfer(event)">
+                                <div class="form-group">
+                                    <label for="txn-receiver">Receiver UPI ID or Phone Number</label>
+                                    <div class="input-wrapper">
+                                        <i class="fa-solid fa-user-check input-icon"></i>
+                                        <input type="text" id="txn-receiver" required placeholder="e.g. 9876543210 or name@mlbfd" oninput="handlePayeeLookupDebounced()">
+                                    </div>
+                                    <small class="form-help">Enter recipient's registered UPI ID or 10-digit phone number</small>
+                                </div>
+
+                                <!-- Payee Lookup Confirmation Card & Error Banner -->
+                                <div id="payee-lookup-card" style="display: none; margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; background: rgba(0, 230, 118, 0.08); border: 1px solid rgba(0, 230, 118, 0.3);">
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(0, 230, 118, 0.2); display: flex; align-items: center; justify-content: center; color: var(--color-success); font-size: 16px;">
+                                                <i class="fa-solid fa-user-check"></i>
+                                            </div>
+                                            <div>
+                                                <div id="payee-card-name" style="font-weight: 600; font-size: 14px; color: #fff;">Masked Payee</div>
+                                                <div id="payee-card-upi" style="font-size: 12px; color: var(--color-text-secondary);">upi@mlbfd</div>
+                                            </div>
+                                        </div>
+                                        <span class="verdict-tag completed" style="font-size: 11px;"><i class="fa-solid fa-circle-check"></i> VERIFIED USER</span>
+                                    </div>
+                                </div>
+
+                                <div id="payee-lookup-error" class="alert alert-danger" style="display: none; margin-bottom: 16px;">
+                                    <i class="fa-solid fa-circle-xmark"></i>
+                                    <span id="payee-lookup-error-msg">This user is not registered on MLBFD</span>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="txn-amount">Transaction Amount (INR)</label>
+                                    <div class="input-wrapper">
+                                        <span class="input-tag">₹</span>
+                                        <input type="number" id="txn-amount" step="0.01" required min="1" placeholder="e.g. 500" oninput="triggerRiskPreviewDebounced()">
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="txn-qr-simulate" onchange="toggleQrField()">
+                                        <span class="checkmark"></span>
+                                        Simulate QR Code Scan
+                                    </label>
+                                    <div class="input-wrapper" id="qr-input-group" style="display: none; margin-top: 10px;">
+                                        <i class="fa-solid fa-qrcode input-icon"></i>
+                                        <input type="text" id="txn-qr-code" placeholder="upi://pay?pa=receiver@okaxis&pn=Merchant&am=100" oninput="triggerRiskPreviewDebounced()">
+                                    </div>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 16px; padding: 12px 14px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color);">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Transaction Location</div>
+                                            <div id="current-location-text" style="font-weight: 600; font-size: 13px; color: #fff; margin-top: 2px;">
+                                                <i class="fa-solid fa-location-dot" style="color: var(--color-brand);"></i> <span id="loc-area-display">Detecting area...</span>
+                                            </div>
+                                            <div id="loc-accuracy-display" style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Source: GPS (Accuracy: --)</div>
+                                        </div>
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="openMapModal()" style="font-size: 11px; padding: 5px 12px; border-radius: 6px;">
+                                            <i class="fa-solid fa-map-pin"></i> Pin on Map
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary btn-block" style="justify-content: center; width: 100%; margin-top: 16px;">
+                                    <i class="fa-solid fa-credit-card"></i> Proceed to Pay
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- Real-time Predictive Risk Card -->
+                        <div class="card risk-preview-card">
+                            <h3>Real-Time Security Assessment</h3>
+                            <p class="section-description">How the 7-layer engine views this payment in real time</p>
+                            
+                            <div class="risk-gauge-container">
+                                <div class="risk-gauge-label">
+                                    <span id="risk-gauge-verdict">SAFE</span>
+                                    <h4 id="risk-gauge-percent">0.0%</h4>
+                                </div>
+                                <div class="risk-progress-bar">
+                                    <div class="risk-progress-fill" id="risk-gauge-fill" style="width: 0%;"></div>
+                                </div>
+                                <span class="risk-label">Engine Risk Score Preview</span>
+                            </div>
+
+                            <div class="risk-flags-section" id="risk-warnings-container">
+                                <h4 class="mini-title">Risk Markers Flagged</h4>
+                                <ul class="risk-flags-list" id="risk-warnings-list">
+                                    <li class="safe-marker"><i class="fa-solid fa-circle-check"></i> Standard parameters. Ready to pay.</li>
+                                </ul>
+                            </div>
+
+                            <!-- Plain-Language Fraud Engine Explanation (Part 25) -->
+                            <div class="risk-explain-section" id="plain-language-reason-container" style="margin-top: 14px; padding: 12px 14px; background: rgba(99, 102, 241, 0.08); border-radius: var(--radius-md, 8px); border-left: 3px solid #6366f1;">
+                                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                    <i class="fa-solid fa-wand-magic-sparkles" style="color: #6366f1; font-size: 0.85rem;"></i>
+                                    <strong style="font-size: 0.8rem; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">Engine Explanation</strong>
+                                </div>
+                                <p id="plain-language-reason-text" style="margin: 0; font-size: 0.82rem; line-height: 1.45; color: var(--text-secondary);">
+                                    Standard parameters. Ready to pay.
+                                </p>
+                            </div>
+
+                            <div class="risk-layers-breakdown" id="risk-layers-container">
+                                <h4 class="mini-title">7-Layer Score Breakdown</h4>
+                                <div class="layer-bar-group">
+                                    <div class="layer-bar-header">
+                                        <span>1. Behavioral (38%)</span>
+                                        <span id="layer-score-1">0%</span>
+                                    </div>
+                                    <div class="layer-bar-bg"><div class="layer-bar-fill" id="layer-fill-1" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="layer-bar-group">
+                                    <div class="layer-bar-header">
+                                        <span>2. Velocity (4%)</span>
+                                        <span id="layer-score-2">0%</span>
+                                    </div>
+                                    <div class="layer-bar-bg"><div class="layer-bar-fill" id="layer-fill-2" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="layer-bar-group">
+                                    <div class="layer-bar-header">
+                                        <span>3. Flow Network (3%)</span>
+                                        <span id="layer-score-3">0%</span>
+                                    </div>
+                                    <div class="layer-bar-bg"><div class="layer-bar-fill" id="layer-fill-3" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="layer-bar-group">
+                                    <div class="layer-bar-header">
+                                        <span>4. Payee Trust (28%)</span>
+                                        <span id="layer-score-4">0%</span>
+                                    </div>
+                                    <div class="layer-bar-bg"><div class="layer-bar-fill" id="layer-fill-4" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="layer-bar-group">
+                                    <div class="layer-bar-header">
+                                        <span>5. Compromise (15%)</span>
+                                        <span id="layer-score-5">0%</span>
+                                    </div>
+                                    <div class="layer-bar-bg"><div class="layer-bar-fill" id="layer-fill-5" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="layer-bar-group">
+                                    <div class="layer-bar-header">
+                                        <span>6. Amount Limits (10%)</span>
+                                        <span id="layer-score-6">0%</span>
+                                    </div>
+                                    <div class="layer-bar-bg"><div class="layer-bar-fill" id="layer-fill-6" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="layer-bar-group">
+                                    <div class="layer-bar-header">
+                                        <span>7. Web Reputation (2%)</span>
+                                        <span id="layer-score-7">0%</span>
+                                    </div>
+                                    <div class="layer-bar-bg"><div class="layer-bar-fill" id="layer-fill-7" style="width: 0%;"></div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Receive Money -->
+                <div id="tab-receive" class="tab-content" style="display: none;">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Receive Money QR</h2>
+                            <p>Generate a customized UPI payment link and scan-ready QR code for your account</p>
+                        </div>
+                    </div>
+
+                    <div class="split-grid">
+                        <!-- QR Code Generator Form Card -->
+                        <div class="card form-card">
+                            <h3>Customize Payment Request</h3>
+                            <form id="receive-form" onsubmit="event.preventDefault();">
+                                <div class="form-group">
+                                    <label>Your UPI ID Address</label>
+                                    <div class="input-wrapper" style="background-color: var(--bg-surface-hover); opacity: 0.85;">
+                                        <i class="fa-solid fa-at input-icon"></i>
+                                        <input type="text" id="receive-my-upi" readonly value="" style="cursor: not-allowed;">
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="receive-amount">Request Amount (INR, Optional)</label>
+                                    <div class="input-wrapper">
+                                        <span class="input-tag">₹</span>
+                                        <input type="number" id="receive-amount" step="0.01" min="1" placeholder="e.g. 500" oninput="generateReceiveQr()">
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="receive-note">Payment Note (Optional)</label>
+                                    <textarea id="receive-note" rows="3" placeholder="e.g. Dinner split, rent..." oninput="generateReceiveQr()"></textarea>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Generated QR Card -->
+                        <div class="card text-center" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; padding:32px;">
+                            <h3>Your Payment QR Code</h3>
+                            <div class="qr-code-box" style="background:white; padding:16px; border-radius:var(--radius-md); box-shadow:var(--shadow-sm); display:flex; justify-content:center; align-items:center;">
+                                <img id="receive-qr-img" src="" alt="UPI QR Code" style="width:200px; height:200px; display:block;">
+                            </div>
+                            <div style="text-align:center; width: 100%;">
+                                <code id="receive-qr-link-text" style="display:block; font-size:11px; color:var(--text-secondary); word-break:break-all; max-width:100%; margin-bottom:12px; padding:8px; background:var(--bg-base); border-radius:var(--radius-sm); border:1px solid var(--border-color);">upi://pay?...</code>
+                                <button class="btn btn-primary" onclick="copyUpiQrLink()">
+                                    <i class="fa-solid fa-copy"></i> Copy UPI Link
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Transaction History -->
+                <div id="tab-history" class="tab-content" style="display: none;">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Transaction History</h2>
+                            <p>Detailed overview of all incoming and outgoing transactions. Report discrepancies or verify safety.</p>
+                        </div>
+                    </div>
+
+                    <div class="card table-card">
+                        <div class="table-header">
+                            <h3>Logs Archive</h3>
+                            <div class="table-filters">
+                                <select class="filter-select" id="history-filter" onchange="filterHistoryTable()">
+                                    <option value="ALL">All Transactions</option>
+                                    <option value="SENT">Funds Sent (Debits)</option>
+                                    <option value="RECEIVED">Funds Received (Credits)</option>
+                                    <option value="BLOCKED">Blocked Fraud Alerts</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Transaction ID</th>
+                                        <th>Sender UPI</th>
+                                        <th>Receiver UPI</th>
+                                        <th>Amount</th>
+                                        <th>Risk Score</th>
+                                        <th>Status</th>
+                                        <th>Timestamp</th>
+                                        <th>Action/Feedback</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-table-body">
+                                    <tr>
+                                        <td colspan="8" style="text-align: center; color: var(--text-muted);">Fetching history...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Trusted Payees -->
+                <div id="tab-trusted" class="tab-content" style="display: none;">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Trusted Payees (Whitelist)</h2>
+                            <p>Whitelisted addresses bypass severe behavioral triggers to reduce transaction friction</p>
+                        </div>
+                    </div>
+
+                    <div class="split-grid">
+                        <div class="card table-card flex-grow-2">
+                            <h3>Current Trusted List</h3>
+                            <div class="table-wrapper" style="margin-top: 16px;">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Nickname</th>
+                                            <th>UPI ID</th>
+                                            <th>Transactions Count</th>
+                                            <th>Total Sent</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="trusted-payees-body">
+                                        <tr>
+                                            <td colspan="5" style="text-align: center; color: var(--text-muted);">No payees registered yet.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="card form-card flex-grow-1">
+                            <h3>Add Trusted Payee</h3>
+                            <form id="add-payee-form" onsubmit="addTrustedPayee(event)">
+                                <div class="form-group">
+                                    <label for="payee-upi">Payee UPI ID</label>
+                                    <div class="input-wrapper">
+                                        <i class="fa-solid fa-at input-icon"></i>
+                                        <input type="text" id="payee-upi" required placeholder="e.g. mom@okaxis">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="payee-nickname">Nickname</label>
+                                    <div class="input-wrapper">
+                                        <i class="fa-solid fa-user input-icon"></i>
+                                        <input type="text" id="payee-nickname" required placeholder="e.g. Mom">
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-block" style="justify-content: center; width:100%; margin-top: 10px;">
+                                    <i class="fa-solid fa-user-plus"></i> Add Payee
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Safety Center -->
+                <div id="tab-safety" class="tab-content" style="display: none;">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Security and Reputation Safety Center</h2>
+                            <p>Check the reputation of URLs/domains and report crowdsourced fraud attempts directly</p>
+                        </div>
+                    </div>
+
+                    <div class="split-grid">
+                        <!-- URL Trust Checker -->
+                        <div class="card">
+                            <h3>Website Safety Checker</h3>
+                            <p class="section-description" style="margin-bottom:16px;">Verify domain trust ratings before committing payments to merchant QR links.</p>
+                            
+                            <form onsubmit="checkDomainReputation(event)" style="margin-bottom:20px;">
+                                <div class="form-group">
+                                    <label for="safety-domain">Domain to Analyze</label>
+                                    <div class="input-wrapper">
+                                        <i class="fa-solid fa-globe input-icon"></i>
+                                        <input type="text" id="safety-domain" required placeholder="e.g. fast-pay-upi.org">
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-secondary btn-block" style="justify-content: center; width:100%;">
+                                    <i class="fa-solid fa-magnifying-glass"></i> Check Reputation
+                                </button>
+                            </form>
+
+                            <div class="domain-result-card" id="domain-result" style="display: none;">
+                                <div class="result-header">
+                                    <h4 id="result-domain-name">domain.com</h4>
+                                    <span class="verdict-tag" id="result-domain-verdict">SAFE</span>
+                                </div>
+                                <div class="result-gauge-group">
+                                    <div class="result-gauge-bar"><div class="result-gauge-fill" id="result-domain-score-fill"></div></div>
+                                    <span class="result-score-text">Trust Score: <strong id="result-domain-score">100/100</strong></span>
+                                </div>
+                                <ul class="result-reasons-list" id="result-domain-reasons">
+                                    <li>SSL Certificate is valid</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Report Scam UPI -->
+                        <div class="card form-card">
+                            <h3>Report Scam UPI (Crowdsourcing)</h3>
+                            <p class="section-description" style="margin-bottom:16px;">Report suspicious wallets. The database feeds directly into our global blacklist.</p>
+
+                            <form id="scam-report-form" onsubmit="submitScamReport(event)">
+                                <div class="form-group">
+                                    <label for="scam-upi-input">UPI ID of Scammer</label>
+                                    <div class="input-wrapper">
+                                        <i class="fa-solid fa-ban input-icon"></i>
+                                        <input type="text" id="scam-upi-input" required placeholder="e.g. rewards-pay@okicici">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="scam-description">Description of Fraud / Scam Details</label>
+                                    <textarea id="scam-description" required rows="4" placeholder="Explain the scam scenario (e.g. lottery scam, caller posing as bank representative)..."></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-block" style="justify-content: center; width:100%;">
+                                    <i class="fa-solid fa-bullhorn"></i> File Scam Report
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Security Settings (BHIM/PhonePe Inspired) -->
+                <div id="tab-settings" class="tab-content" style="display: none;">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Security and Gateways Settings</h2>
+                            <p>Manage your UPI PIN, daily limits, and security thresholds dynamically</p>
+                        </div>
+                    </div>
+
+                    <div class="split-grid">
+                        <!-- Settings Panel Form -->
+                        <div class="card form-card">
+                            <h3>UPI Transaction Settings</h3>
+                            <p class="section-description" style="margin-bottom:20px;">Manage daily limits. Transactions above this value will be blocked automatically.</p>
+                            
+                            <div class="alert alert-danger" id="settings-error" style="display: none; margin-bottom: 16px;">
+                                <i class="fa-solid fa-circle-exclamation"></i>
+                                <span id="settings-error-msg">Error</span>
+                            </div>
+                            <div class="alert alert-success" id="settings-success" style="display: none; margin-bottom: 16px;">
+                                <i class="fa-solid fa-circle-check"></i>
+                                <span>Settings updated successfully!</span>
+                            </div>
+
+                            <form id="settings-form" onsubmit="updateUserSettings(event)">
+                                <div class="form-group">
+                                    <label for="settings-daily-limit">Daily Transfer Limit (INR)</label>
+                                    <div class="input-wrapper">
+                                        <span class="input-tag">₹</span>
+                                        <input type="number" id="settings-daily-limit" required min="100" max="500000" placeholder="e.g. 50000">
+                                    </div>
+                                    <small class="form-help">Current active daily transaction limit enforced by engine</small>
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-block" style="justify-content: center; width:100%;">
+                                    <i class="fa-solid fa-floppy-disk"></i> Save Settings
+                                </button>
+                            </form>
+                            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                <h4 style="font-size: 14px; margin-bottom: 8px;"><i class="fa-solid fa-flask"></i> Demo Balance Reset</h4>
+                                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">Restore your virtual balance to ₹100,000 for demonstration purposes.</p>
+                                <button type="button" class="btn btn-secondary btn-block" onclick="handleResetBalance()" style="justify-content: center; width: 100%;">
+                                    <i class="fa-solid fa-rotate-left"></i> Reset Balance to ₹100,000
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Change PIN Form -->
+                        <div class="card form-card">
+                            <h3>Change 6-Digit PIN</h3>
+                            <p class="section-description" style="margin-bottom:20px;">Update your login or payment PIN with dual-channel OTP verification.</p>
+                            
+                            <div class="alert alert-danger" id="change-pin-error" style="display: none; margin-bottom: 16px;">
+                                <i class="fa-solid fa-circle-exclamation"></i>
+                                <span id="change-pin-error-msg">Error</span>
+                            </div>
+                            <div class="alert alert-success" id="change-pin-success" style="display: none; margin-bottom: 16px;">
+                                <i class="fa-solid fa-circle-check"></i>
+                                <span id="change-pin-success-msg">PIN updated successfully!</span>
+                            </div>
+
+                            <form id="change-pin-form" onsubmit="handlePinChangeInitiate(event)">
+                                <div class="form-group">
+                                    <label for="pin-type">PIN Type</label>
+                                    <select id="pin-type" class="form-control" style="width: 100%; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">
+                                        <option value="payment">6-Digit Payment PIN</option>
+                                        <option value="login">6-Digit Login PIN</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="pin-current">Current 6-Digit PIN</label>
+                                    <div class="input-wrapper">
+                                        <i class="fa-solid fa-key input-icon"></i>
+                                        <input type="password" id="pin-current" required maxlength="6" pattern="\d{6}" inputmode="numeric" placeholder="••••••">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="pin-new">New 6-Digit PIN</label>
+                                    <div class="input-wrapper">
+                                        <i class="fa-solid fa-lock input-icon"></i>
+                                        <input type="password" id="pin-new" required maxlength="6" pattern="\d{6}" inputmode="numeric" placeholder="••••••">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="pin-confirm">Confirm New PIN</label>
+                                    <div class="input-wrapper">
+                                        <i class="fa-solid fa-circle-check input-icon"></i>
+                                        <input type="password" id="pin-confirm" required maxlength="6" pattern="\d{6}" inputmode="numeric" placeholder="••••••">
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-block" id="btn-initiate-pin-change" style="justify-content: center; width:100%;">
+                                    <i class="fa-solid fa-arrows-rotate"></i> Verify Current PIN & Send OTPs
+                                </button>
+                            </form>
+
+                            <!-- Dual OTP confirmation section (hidden until current pin verified) -->
+                            <div id="pin-change-otp-section" style="display: none; margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px;">
+                        <div id="pin-delivery" style="display:none;margin:8px 0;"></div>
+                                <h4 style="font-size: 14px; margin-bottom: 8px; color: var(--color-brand);"><i class="fa-solid fa-shield-halved"></i> Enter Verification Codes</h4>
+                                <p style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 12px;">Codes sent to your registered Email and Telegram.</p>
+                                <form onsubmit="handlePinChangeConfirm(event)">
+                                    <div class="form-group">
+                                        <label for="pin-change-email-otp">Email OTP</label>
+                                        <input type="text" id="pin-change-email-otp" required maxlength="6" pattern="\d{6}" placeholder="6-digit Email code" style="width: 100%; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="pin-change-telegram-otp">Telegram OTP</label>
+                                        <input type="text" id="pin-change-telegram-otp" required maxlength="6" pattern="\d{6}" placeholder="6-digit Telegram code" style="width: 100%; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-block" id="btn-confirm-pin-change" style="justify-content: center; width:100%; margin-top: 10px;">
+                                        <i class="fa-solid fa-check"></i> Confirm & Update PIN
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- OTP 2FA Verification Overlay Modal -->
+    <div class="modal-overlay" id="otp-modal" style="display: none;">
+        <div class="modal-card animate-zoom-in">
+            <div class="modal-header">
+                <i class="fa-solid fa-lock-keyhole modal-icon animate-pulse"></i>
+                <h3>Dual-Channel OTP Verification</h3>
+                <p>An anomalous pattern was flagged. Security codes have been dispatched to your registered <strong>Email</strong> and <strong>Telegram</strong>.</p>
+                <div id="txn-delivery" style="display:none;margin-top:8px;text-align:left;"></div>
+            </div>
+            
+            <div class="alert alert-danger" id="otp-error" style="display: none; margin-bottom: 16px;">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <span id="otp-error-msg">Incorrect verification codes.</span>
+            </div>
+
+            <form id="otp-verification-form" onsubmit="verifyOtpPayment(event)">
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="otp-email-input"><i class="fa-solid fa-envelope" style="color:var(--color-primary); margin-right:6px;"></i> Email Security Code (6 Digits)</label>
+                    <div class="input-wrapper text-center">
+                        <input type="text" id="otp-email-input" required maxlength="6" pattern="\d{6}" inputmode="numeric" placeholder="000000" style="text-align: center; letter-spacing: 8px; font-size: 18px; font-weight:700;">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="otp-telegram-input"><i class="fa-brands fa-telegram" style="color:#0088cc; margin-right:6px;"></i> Telegram Security Code (6 Digits)</label>
+                    <div class="input-wrapper text-center">
+                        <input type="text" id="otp-telegram-input" required maxlength="6" pattern="\d{6}" inputmode="numeric" placeholder="000000" style="text-align: center; letter-spacing: 8px; font-size: 18px; font-weight:700;">
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary col" style="justify-content:center; width:50%;" onclick="closeOtpModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary col" style="justify-content:center; width:50%;" id="otp-submit-btn">Verify & Complete Transfer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Transaction Result Drawer/Overlay -->
+    <div class="modal-overlay" id="result-modal" style="display: none;">
+        <div class="modal-card animate-zoom-in">
+            <div class="modal-header" id="result-modal-header">
+                <i class="fa-solid fa-circle-check modal-icon text-success" id="result-modal-icon"></i>
+                <h3 id="result-modal-title">Transaction Completed</h3>
+                <p id="result-modal-message">Your payment was sent successfully.</p>
+            </div>
+
+            <div class="card" id="result-modal-breakdown" style="background-color: var(--bg-base); margin-bottom: 20px; padding: 16px; border-radius: var(--radius-md);">
+                <div style="display:flex; justify-content:space-between; margin-bottom: 10px;">
+                    <span>Risk Verdict Index:</span>
+                    <strong id="result-breakdown-score">10.0%</strong>
+                </div>
+                <div class="risk-progress-bar"><div class="risk-progress-fill" id="result-breakdown-fill" style="width: 10%;"></div></div>
+                
+                <div id="result-breakdown-reasons" style="margin-top: 14px; font-size:12px;">
+                    <strong>Verification details:</strong>
+                    <ul style="padding-left:16px; margin-top:6px; color: var(--text-secondary);" id="result-breakdown-reasons-list">
+                        <li>Standard baseline parameters check passed.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <button class="btn btn-primary btn-block" style="justify-content:center; width: 100%;" onclick="closeResultModal()">Dismiss</button>
+        </div>
+    </div>
+
+    <!-- Secure UPI PIN Modal (BHIM / PhonePe Inspired) -->
+    <div class="modal-overlay" id="upi-pin-modal" style="display: none;">
+        <div class="upi-pin-card animate-zoom-in">
+            <div class="upi-pin-header">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/e/e1/UPI-Logo-vector.svg" alt="UPI Logo" class="upi-logo-icon">
+                <div class="upi-bank-name">MLBFD Secure Gateway</div>
+            </div>
+            
+            <div class="upi-pin-tx-details" id="upi-pin-tx-details">
+                <div class="upi-tx-label">Paying To:</div>
+                <div class="upi-tx-val" id="upi-pin-receiver-display">friend@okaxis</div>
+                <div class="upi-tx-label">Amount:</div>
+                <div class="upi-tx-val" id="upi-pin-amount-display">₹500.00</div>
+            </div>
+            
+            <div class="upi-pin-input-section">
+                <div class="upi-pin-title">ENTER 6-DIGIT UPI PIN</div>
+                <div class="upi-pin-dots-container">
+                    <div class="upi-pin-dot" id="pin-dot-1"></div>
+                    <div class="upi-pin-dot" id="pin-dot-2"></div>
+                    <div class="upi-pin-dot" id="pin-dot-3"></div>
+                    <div class="upi-pin-dot" id="pin-dot-4"></div>
+                    <div class="upi-pin-dot" id="pin-dot-5"></div>
+                    <div class="upi-pin-dot" id="pin-dot-6"></div>
+                </div>
+            </div>
+            
+            <!-- On-Screen Numeric Keypad -->
+            <div class="upi-keypad">
+                <button class="keypad-btn" onclick="pressPinKey('1')">1</button>
+                <button class="keypad-btn" onclick="pressPinKey('2')">2</button>
+                <button class="keypad-btn" onclick="pressPinKey('3')">3</button>
+                <button class="keypad-btn" onclick="pressPinKey('4')">4</button>
+                <button class="keypad-btn" onclick="pressPinKey('5')">5</button>
+                <button class="keypad-btn" onclick="pressPinKey('6')">6</button>
+                <button class="keypad-btn" onclick="pressPinKey('7')">7</button>
+                <button class="keypad-btn" onclick="pressPinKey('8')">8</button>
+                <button class="keypad-btn" onclick="pressPinKey('9')">9</button>
+                <button class="keypad-btn special-btn" onclick="clearPinKey()"><i class="fa-solid fa-delete-left"></i></button>
+                <button class="keypad-btn" onclick="pressPinKey('0')">0</button>
+                <button class="keypad-btn submit-btn" onclick="submitPinKey()"><i class="fa-solid fa-circle-check"></i></button>
+            </div>
+            
+            <button class="btn-cancel-pin" onclick="closeUpiPinModal()">Cancel Transaction</button>
+        </div>
+    </div>
+
+    <!-- Leaflet Draggable Pin Map Modal (Part 16) -->
+    <div id="map-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+        <div style="background: var(--bg-surface, #140e2b); border: 1px solid var(--border-color, #2b224e); border-radius: 14px; max-width: 560px; width: 92%; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin: 0; font-size: 16px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-map-location-dot" style="color: var(--color-brand, #6200ee);"></i> Confirm Location
+                </h3>
+                <button type="button" onclick="closeMapModal()" style="background: none; border: none; color: var(--text-muted); font-size: 22px; cursor: pointer;">&times;</button>
+            </div>
+            <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                Drag the marker or click on the map to set your accurate location.
+            </p>
+            <div id="leaflet-map" style="height: 280px; width: 100%; border-radius: 8px; border: 1px solid var(--border-color, #2b224e);"></div>
+            <div style="margin-top: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div>
+                    <div style="font-size: 11px; color: var(--text-muted);">SELECTED AREA</div>
+                    <div id="modal-area-name" style="font-size: 13px; font-weight: 600; color: #fff;">Rajajinagar, Bengaluru</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="setPresetLocation(12.9982, 77.5530, 'Rajajinagar, Bengaluru')">Rajajinagar Pin</button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="confirmManualPinLocation()"><i class="fa-solid fa-check"></i> Confirm Location</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Core Logic Script -->
+    <script src="/static/js/otp_status.js"></script>
+    <script src="/static/js/user.js"></script>
+    <script>
+        // Mobile sidebar toggle
+        const mobileBtn = document.getElementById('mobile-menu-btn');
+        const sidebar = document.querySelector('.sidebar');
+        const backdrop = document.getElementById('sidebar-backdrop');
+
+        function openMobileSidebar() {
+            sidebar.classList.add('mobile-open');
+            backdrop.classList.add('active');
+        }
+        function closeMobileSidebar() {
+            sidebar.classList.remove('mobile-open');
+            backdrop.classList.remove('active');
+        }
+
+        if (mobileBtn) mobileBtn.addEventListener('click', openMobileSidebar);
+        if (backdrop) backdrop.addEventListener('click', closeMobileSidebar);
+
+        // Close sidebar when menu item clicked on mobile
+        document.querySelectorAll('.menu-item').forEach(item => {
+            item.addEventListener('click', () => {
+                if (window.innerWidth <= 768) closeMobileSidebar();
+            });
+        });
+    </script>
+</body>
+</html>

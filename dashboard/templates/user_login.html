@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLBFD - User Login</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- User Stylesheet -->
+    <link rel="stylesheet" href="/static/css/user.css">
+    <style>
+        .dual-otp-container {
+            display: none;
+            margin-top: 16px;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .channel-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+        }
+        .badge-email {
+            background: rgba(98, 0, 238, 0.15);
+            color: #b388ff;
+            border: 1px solid rgba(98, 0, 238, 0.3);
+        }
+        .badge-telegram {
+            background: rgba(34, 158, 217, 0.15);
+            color: #229ED9;
+            border: 1px solid rgba(34, 158, 217, 0.3);
+        }
+    </style>
+</head>
+<body class="auth-body">
+    <!-- Demo Virtual Money Banner -->
+    <div class="demo-banner" style="position: fixed; top: 0; left: 0; right: 0; z-index: 9999; background: linear-gradient(90deg, #6200ee 0%, #03dac6 100%); color: #0a0616; padding: 6px 16px; font-weight: 700; font-size: 13px; text-align: center; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+        <i class="fa-solid fa-flask"></i>
+        <span>MLBFD demo - virtual money only</span>
+    </div>
+    <div class="auth-container" style="margin-top: 40px;">
+        <div class="auth-card animate-fade-in">
+            <div class="auth-header">
+                <div class="auth-logo">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <h2>MLBFD</h2>
+                <p>Secure User Payment Dashboard</p>
+            </div>
+            
+            <div class="alert alert-danger" id="login-error" style="display: none;">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span id="error-message">Invalid credentials.</span>
+            </div>
+
+            <div class="alert alert-success" id="login-success" style="display: none;">
+                <i class="fa-solid fa-circle-check"></i>
+                <span id="success-message">Authentication successful! Redirecting...</span>
+            </div>
+
+            <div class="alert alert-warning" id="login-info" style="display: none;">
+                <i class="fa-solid fa-mobile-screen-button"></i>
+                <span id="info-message">Unrecognized device. Please enter the OTPs sent to your Email and Telegram.</span>
+            </div>
+
+            <!-- Main Credentials Form -->
+            <form id="login-form" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="user-id">User ID (or Phone / UPI ID)</label>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-at input-icon"></i>
+                        <input type="text" id="user-id" required placeholder="e.g. yourname or 9876543210" autocomplete="username">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="pin">6-Digit Login PIN</label>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-lock input-icon"></i>
+                        <input type="password" id="pin" required maxlength="6" pattern="\d{6}" inputmode="numeric" placeholder="••••••" autocomplete="current-password">
+                    </div>
+                    <small class="form-help">Enter your 6-digit login PIN</small>
+                </div>
+
+                <button type="submit" class="btn-auth" id="submit-btn">
+                    <span>Sign In</span>
+                    <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                </button>
+            </form>
+
+            <!-- Dual OTP Verification Form (Appears when new device is detected) -->
+            <form id="dual-otp-form" class="dual-otp-container" onsubmit="handleDualOtpVerify(event)">
+                <div style="text-align: center; margin-bottom: 16px;">
+                    <h3 style="font-size: 16px; margin-bottom: 4px;">Two-Factor Device Verification</h3>
+                    <div id="login-delivery" style="display:none;margin:8px 0;text-align:left;"></div>
+                    <p style="font-size: 12px; color: var(--text-secondary);">Codes valid for 5 minutes. Enter both to bind this device.</p>
+                </div>
+
+                <div class="form-group">
+                    <div class="channel-badge badge-email">
+                        <i class="fa-solid fa-envelope"></i> Email Verification Code
+                    </div>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-key input-icon"></i>
+                        <input type="text" id="email_code" required maxlength="6" pattern="\d{6}" inputmode="numeric" placeholder="6-digit Email code" style="letter-spacing: 4px; font-weight: 600;">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <div class="channel-badge badge-telegram">
+                        <i class="fa-brands fa-telegram"></i> Telegram Verification Code
+                    </div>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-paper-plane input-icon"></i>
+                        <input type="text" id="telegram_code" required maxlength="6" pattern="\d{6}" inputmode="numeric" placeholder="6-digit Telegram code" style="letter-spacing: 4px; font-weight: 600;">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-auth" id="verify-submit-btn" style="background: var(--color-success); color: #0a0616; margin-top: 14px;">
+                    <span>Verify & Bind Device</span>
+                    <i class="fa-solid fa-shield-check"></i>
+                </button>
+            </form>
+
+            <div class="auth-footer">
+                <p><a href="#forgot-pin" onclick="openForgotPinModal(event)" style="color: var(--color-brand); text-decoration: none; font-size: 13px;"><i class="fa-solid fa-key"></i> Forgot PIN?</a></p>
+                <p style="margin-top: 6px;">New to MLBFD? <a href="/register">Create an Account</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Forgot PIN Modal -->
+    <div id="forgot-pin-modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); z-index: 1000; align-items: center; justify-content: center;">
+        <div class="auth-card" style="max-width: 440px; width: 90%; margin: 20px auto; position: relative;">
+            <button onclick="closeForgotPinModal()" style="position: absolute; top: 16px; right: 16px; background: none; border: none; color: #fff; font-size: 18px; cursor: pointer;">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <div class="auth-header">
+                <div class="auth-logo" style="background: rgba(255,107,107,0.15); color: #ff6b6b;">
+                    <i class="fa-solid fa-unlock-keyhole"></i>
+                </div>
+                <h3>Reset PIN</h3>
+                <p id="forgot-subtitle" style="font-size: 12px; color: var(--color-text-secondary);">Recover your login PIN with dual verification</p>
+            </div>
+
+            <div class="alert alert-danger" id="forgot-error" style="display: none;">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <span id="forgot-error-msg">Error</span>
+            </div>
+            <div class="alert alert-success" id="forgot-success" style="display: none;">
+                <i class="fa-solid fa-circle-check"></i>
+                <span id="forgot-success-msg">Success</span>
+            </div>
+
+            <!-- Step 1: Request OTPs -->
+            <form id="forgot-step-1" onsubmit="handleForgotStart(event)">
+                <div class="form-group">
+                    <label for="forgot-identifier">User ID or Phone Number</label>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-user input-icon"></i>
+                        <input type="text" id="forgot-identifier" required placeholder="Enter User ID or Phone">
+                    </div>
+                </div>
+                <button type="submit" class="btn-auth" id="forgot-btn-1">
+                    <span>Send Dual OTPs</span>
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </form>
+
+            <!-- Step 2: Verify Dual OTPs -->
+            <form id="forgot-step-2" style="display: none;" onsubmit="handleForgotVerify(event)">
+                <p style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 12px;">Enter codes sent to your registered Email and Telegram.</p>
+                <div id="forgot-delivery" style="display:none;margin:8px 0;"></div>
+                <div class="form-group">
+                    <label for="forgot-email-otp">Email OTP (6 digits)</label>
+                    <input type="text" id="forgot-email-otp" required maxlength="6" pattern="\d{6}" placeholder="••••••" style="width: 100%; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">
+                </div>
+                <div class="form-group">
+                    <label for="forgot-telegram-otp">Telegram OTP (6 digits)</label>
+                    <input type="text" id="forgot-telegram-otp" required maxlength="6" pattern="\d{6}" placeholder="••••••" style="width: 100%; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">
+                </div>
+                <button type="submit" class="btn-auth" id="forgot-btn-2">
+                    <span>Verify Codes</span>
+                    <i class="fa-solid fa-check-double"></i>
+                </button>
+            </form>
+
+            <!-- Step 3: Security Question & New PIN -->
+            <form id="forgot-step-3" style="display: none;" onsubmit="handleForgotReset(event)">
+                <div class="form-group">
+                    <label>Security Question</label>
+                    <p id="forgot-sec-question" style="font-size: 13px; font-weight: 600; color: #fff; background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 6px;"></p>
+                </div>
+                <div class="form-group">
+                    <label for="forgot-sec-answer">Security Answer</label>
+                    <input type="text" id="forgot-sec-answer" required placeholder="Your answer (case-insensitive)" style="width: 100%; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">
+                </div>
+                <div class="form-group">
+                    <label for="forgot-new-pin">New 6-Digit PIN</label>
+                    <input type="password" id="forgot-new-pin" required maxlength="6" pattern="\d{6}" placeholder="••••••" style="width: 100%; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">
+                </div>
+                <div class="form-group">
+                    <label for="forgot-confirm-pin">Confirm New PIN</label>
+                    <input type="password" id="forgot-confirm-pin" required maxlength="6" pattern="\d{6}" placeholder="••••••" style="width: 100%; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">
+                </div>
+                <button type="submit" class="btn-auth" id="forgot-btn-3">
+                    <span>Reset PIN & Sign In</span>
+                    <i class="fa-solid fa-lock-open"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/otp_status.js"></script>
+    <script>
+        // Get or generate device UUID stored in localStorage
+        function getDeviceId() {
+            let devId = localStorage.getItem('mlbfd_device_id');
+            if (!devId) {
+                devId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'dev_' + Math.random().toString(36).substring(2, 15);
+                localStorage.setItem('mlbfd_device_id', devId);
+            }
+            return devId;
+        }
+
+        // Auto-refresh session on reopen using refresh token
+        async function tryAutoRefresh() {
+            const refreshToken = localStorage.getItem('mlbfd_refresh_token');
+            if (!refreshToken) return;
+
+            try {
+                const res = await fetch('/api/refresh', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${refreshToken}`
+                    }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.access_token) {
+                        localStorage.setItem('mlbfd_token', data.access_token);
+                        window.location.href = '/dashboard';
+                    }
+                }
+            } catch (e) {
+                console.log("Auto-refresh skipped:", e);
+            }
+        }
+        tryAutoRefresh();
+
+        let pendingUserId = "";
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const userIdInput = document.getElementById('user-id');
+            const pinInput = document.getElementById('pin');
+            const submitBtn = document.getElementById('submit-btn');
+            const errorDiv = document.getElementById('login-error');
+            const successDiv = document.getElementById('login-success');
+            const infoDiv = document.getElementById('login-info');
+            const errorText = document.getElementById('error-message');
+
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+            infoDiv.style.display = 'none';
+
+            const user_id = userIdInput.value.trim();
+            const login_pin = pinInput.value.trim();
+            const device_id = getDeviceId();
+
+            if (!user_id || !login_pin) return;
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = `<span>Verifying Credentials...</span> <i class="fa-solid fa-spinner animate-spin"></i>`;
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Device-ID': device_id
+                    },
+                    body: JSON.stringify({ user_id, login_pin, device_id })
+                });
+                
+                const data = await response.json();
+
+                if (response.status === 200 && data.status === "LOGGED_IN") {
+                    // Trusted device login! Direct tokens
+                    localStorage.setItem('mlbfd_token', data.access_token);
+                    localStorage.setItem('mlbfd_refresh_token', data.refresh_token);
+                    localStorage.setItem('mlbfd_user_id', data.user_id);
+                    if (data.upi_id) localStorage.setItem('mlbfd_upi_id', data.upi_id);
+                    
+                    successDiv.style.display = 'flex';
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1000);
+
+                } else if (data.status === "OTP_REQUIRED") {
+                    // Unknown device: Show dual OTP form
+                    pendingUserId = data.user_id || user_id;
+                    infoDiv.style.display = 'flex';
+                    document.getElementById('login-form').style.display = 'none';
+                    document.getElementById('dual-otp-form').style.display = 'block';
+                    MLBFDOtp.render(document.getElementById('login-delivery'), data.delivery,
+                        { purpose: 'LOGIN_NEW_DEVICE', userId: pendingUserId });
+
+                } else {
+                    errorText.innerText = data.message || "Invalid credentials.";
+                    errorDiv.style.display = 'flex';
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = `<span>Sign In</span> <i class="fa-solid fa-arrow-right-to-bracket"></i>`;
+                }
+            } catch (err) {
+                console.error("Login request failed:", err);
+                errorText.innerText = "Server connection lost. Please check if backend is running.";
+                errorDiv.style.display = 'flex';
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = `<span>Sign In</span> <i class="fa-solid fa-arrow-right-to-bracket"></i>`;
+            }
+        }
+
+        async function handleDualOtpVerify(e) {
+            e.preventDefault();
+            const emailCode = document.getElementById('email_code').value.trim();
+            const telegramCode = document.getElementById('telegram_code').value.trim();
+            const btn = document.getElementById('verify-submit-btn');
+            const errorDiv = document.getElementById('login-error');
+            const successDiv = document.getElementById('login-success');
+            const infoDiv = document.getElementById('login-info');
+            const errorText = document.getElementById('error-message');
+
+            errorDiv.style.display = 'none';
+            btn.disabled = true;
+            btn.innerHTML = `<span>Binding Device...</span> <i class="fa-solid fa-spinner animate-spin"></i>`;
+
+            const device_id = getDeviceId();
+
+            try {
+                const response = await fetch('/api/login/verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Device-ID': device_id
+                    },
+                    body: JSON.stringify({
+                        user_id: pendingUserId,
+                        email_code: emailCode,
+                        telegram_code: telegramCode,
+                        device_id: device_id
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success && data.status === "LOGGED_IN") {
+                    localStorage.setItem('mlbfd_token', data.access_token);
+                    localStorage.setItem('mlbfd_refresh_token', data.refresh_token);
+                    localStorage.setItem('mlbfd_user_id', data.user_id);
+                    if (data.upi_id) localStorage.setItem('mlbfd_upi_id', data.upi_id);
+
+                    infoDiv.style.display = 'none';
+                    document.getElementById('success-message').innerText = "Device verified! Redirecting to dashboard...";
+                    successDiv.style.display = 'flex';
+
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1000);
+                } else {
+                    errorText.innerText = data.message || "Dual OTP verification failed.";
+                    errorDiv.style.display = 'flex';
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Verify & Bind Device</span> <i class="fa-solid fa-shield-check"></i>`;
+                }
+            } catch (err) {
+                console.error("Verification failed:", err);
+                errorText.innerText = "Network error during verification.";
+                errorDiv.style.display = 'flex';
+                btn.disabled = false;
+                btn.innerHTML = `<span>Verify & Bind Device</span> <i class="fa-solid fa-shield-check"></i>`;
+            }
+        }
+
+        // Forgot PIN Modal & Workflow
+        let forgotUserId = "";
+        let forgotResetToken = "";
+
+        function openForgotPinModal(e) {
+            if (e) e.preventDefault();
+            document.getElementById('forgot-pin-modal').style.display = 'flex';
+            document.getElementById('forgot-step-1').style.display = 'block';
+            document.getElementById('forgot-step-2').style.display = 'none';
+            document.getElementById('forgot-step-3').style.display = 'none';
+            document.getElementById('forgot-error').style.display = 'none';
+            document.getElementById('forgot-success').style.display = 'none';
+        }
+
+        function closeForgotPinModal() {
+            document.getElementById('forgot-pin-modal').style.display = 'none';
+        }
+
+        async function handleForgotStart(e) {
+            e.preventDefault();
+            const identifier = document.getElementById('forgot-identifier').value.trim();
+            const errDiv = document.getElementById('forgot-error');
+            const errMsg = document.getElementById('forgot-error-msg');
+            const successDiv = document.getElementById('forgot-success');
+            const successMsg = document.getElementById('forgot-success-msg');
+            const btn = document.getElementById('forgot-btn-1');
+
+            errDiv.style.display = 'none';
+            btn.disabled = true;
+            btn.innerHTML = `<span>Sending...</span> <i class="fa-solid fa-spinner animate-spin"></i>`;
+
+            try {
+                const res = await fetch('/api/pin/forgot/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: identifier })
+                });
+                const data = await res.json();
+                forgotUserId = data.user_id || identifier;
+                successMsg.innerText = data.message || "Verification codes sent if account exists.";
+                successDiv.style.display = 'flex';
+
+                document.getElementById('forgot-step-1').style.display = 'none';
+                document.getElementById('forgot-step-2').style.display = 'block';
+                // Unknown accounts get the same generic reply and no delivery map (no enumeration).
+                MLBFDOtp.render(document.getElementById('forgot-delivery'), data.delivery,
+                    { purpose: 'PIN_RESET', userId: forgotUserId });
+            } catch (err) {
+                errMsg.innerText = "Network error. Please try again.";
+                errDiv.style.display = 'flex';
+                btn.disabled = false;
+                btn.innerHTML = `<span>Send Dual OTPs</span> <i class="fa-solid fa-paper-plane"></i>`;
+            }
+        }
+
+        async function handleForgotVerify(e) {
+            e.preventDefault();
+            const emailCode = document.getElementById('forgot-email-otp').value.trim();
+            const telegramCode = document.getElementById('forgot-telegram-otp').value.trim();
+            const errDiv = document.getElementById('forgot-error');
+            const errMsg = document.getElementById('forgot-error-msg');
+            const successDiv = document.getElementById('forgot-success');
+            const successMsg = document.getElementById('forgot-success-msg');
+            const btn = document.getElementById('forgot-btn-2');
+
+            errDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+            btn.disabled = true;
+            btn.innerHTML = `<span>Verifying...</span> <i class="fa-solid fa-spinner animate-spin"></i>`;
+
+            try {
+                const res = await fetch('/api/pin/forgot/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: forgotUserId,
+                        email_code: emailCode,
+                        telegram_code: telegramCode
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    forgotResetToken = data.reset_token;
+                    document.getElementById('forgot-sec-question').innerText = data.security_question || "Security Question";
+                    document.getElementById('forgot-step-2').style.display = 'none';
+                    document.getElementById('forgot-step-3').style.display = 'block';
+                } else {
+                    errMsg.innerText = data.message || "Invalid OTP codes.";
+                    errDiv.style.display = 'flex';
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Verify Codes</span> <i class="fa-solid fa-check-double"></i>`;
+                }
+            } catch (err) {
+                errMsg.innerText = "Network error. Please try again.";
+                errDiv.style.display = 'flex';
+                btn.disabled = false;
+                btn.innerHTML = `<span>Verify Codes</span> <i class="fa-solid fa-check-double"></i>`;
+            }
+        }
+
+        async function handleForgotReset(e) {
+            e.preventDefault();
+            const secAnswer = document.getElementById('forgot-sec-answer').value.trim();
+            const newPin = document.getElementById('forgot-new-pin').value.trim();
+            const confirmPin = document.getElementById('forgot-confirm-pin').value.trim();
+            const errDiv = document.getElementById('forgot-error');
+            const errMsg = document.getElementById('forgot-error-msg');
+            const successDiv = document.getElementById('forgot-success');
+            const successMsg = document.getElementById('forgot-success-msg');
+            const btn = document.getElementById('forgot-btn-3');
+
+            errDiv.style.display = 'none';
+            if (newPin !== confirmPin) {
+                errMsg.innerText = "New PIN and confirm PIN do not match.";
+                errDiv.style.display = 'flex';
+                return;
+            }
+            if (newPin.length !== 6 || !/^\d{6}$/.test(newPin)) {
+                errMsg.innerText = "PIN must be exactly 6 numeric digits.";
+                errDiv.style.display = 'flex';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = `<span>Resetting...</span> <i class="fa-solid fa-spinner animate-spin"></i>`;
+
+            const device_id = getDeviceId();
+
+            try {
+                const res = await fetch('/api/pin/forgot/reset', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Device-ID': device_id
+                    },
+                    body: JSON.stringify({
+                        reset_token: forgotResetToken,
+                        security_answer: secAnswer,
+                        new_pin: newPin,
+                        pin_type: 'login',
+                        device_id: device_id
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    if (data.access_token) {
+                        localStorage.setItem('mlbfd_token', data.access_token);
+                        localStorage.setItem('mlbfd_refresh_token', data.refresh_token);
+                    }
+                    successMsg.innerText = data.message || "PIN reset successfully! Redirecting to dashboard...";
+                    successDiv.style.display = 'flex';
+                    document.getElementById('forgot-step-3').style.display = 'none';
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1500);
+                } else {
+                    errMsg.innerText = data.message || "Failed to reset PIN.";
+                    errDiv.style.display = 'flex';
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Reset PIN & Sign In</span> <i class="fa-solid fa-lock-open"></i>`;
+                }
+            } catch (err) {
+                errMsg.innerText = "Network error. Please try again.";
+                errDiv.style.display = 'flex';
+                btn.disabled = false;
+                btn.innerHTML = `<span>Reset PIN & Sign In</span> <i class="fa-solid fa-lock-open"></i>`;
+            }
+        }
+    </script>
+</body>
+</html>

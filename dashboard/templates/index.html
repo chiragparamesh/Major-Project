@@ -1,0 +1,416 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-title">
+        <h2>Dashboard Overview</h2>
+        <p>Real-time machine learning fraud detection control panel</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-secondary" onclick="refreshDashboard()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+        <a href="/admin/transactions" class="btn btn-primary"><i class="fa-solid fa-list"></i> View All Txns</a>
+    </div>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="card stat-card">
+        <div class="stat-info">
+            <span class="stat-label">Total Volume</span>
+            <span class="stat-value" id="stat-volume">₹0.00</span>
+            <div class="stat-delta up">
+                <i class="fa-solid fa-arrow-trend-up"></i>
+                <span>Normal Flow</span>
+            </div>
+        </div>
+        <div class="stat-icon brand">
+            <i class="fa-solid fa-indian-rupee-sign"></i>
+        </div>
+    </div>
+    
+    <div class="card stat-card">
+        <div class="stat-info">
+            <span class="stat-label">Total Transactions</span>
+            <span class="stat-value" id="stat-txns">0</span>
+            <div class="stat-delta up">
+                <i class="fa-solid fa-chart-line"></i>
+                <span>Active Tracking</span>
+            </div>
+        </div>
+        <div class="stat-icon success">
+            <i class="fa-solid fa-receipt"></i>
+        </div>
+    </div>
+
+    <div class="card stat-card">
+        <div class="stat-info">
+            <span class="stat-label">Avg Risk Score</span>
+            <span class="stat-value" id="stat-risk">0.0%</span>
+            <div class="stat-delta down" id="risk-delta-color">
+                <i class="fa-solid fa-shield-virus"></i>
+                <span id="risk-status-text">Safe Baseline</span>
+            </div>
+        </div>
+        <div class="stat-icon warning">
+            <i class="fa-solid fa-shield-halved"></i>
+        </div>
+    </div>
+
+    <div class="card stat-card">
+        <div class="stat-info">
+            <span class="stat-label">Active Fraud Rate</span>
+            <span class="stat-value" id="stat-fraud">0.0%</span>
+            <div class="stat-delta down" id="fraud-delta-color">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span id="fraud-status-text">Within limits</span>
+            </div>
+        </div>
+        <div class="stat-icon danger">
+            <i class="fa-solid fa-ban"></i>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Section -->
+<div class="charts-grid">
+    <div class="card chart-card">
+        <div class="chart-header">
+            <div class="chart-title">
+                <h3>Transaction Flow Trends</h3>
+                <p>Volume of UPI transactions processed vs detected fraud (INR)</p>
+            </div>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="volumeChart"></canvas>
+        </div>
+    </div>
+    
+    <div class="card chart-card">
+        <div class="chart-header">
+            <div class="chart-title">
+                <h3>Risk Level Distribution</h3>
+                <p>Ratio of verdicts issued by 7-layer aggregator</p>
+            </div>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="verdictChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Transactions -->
+<div class="card table-card">
+    <div class="table-header">
+        <h3>Real-Time Live Transaction Feed</h3>
+        <span class="badge badge-info animate-pulse">Live Streaming</span>
+    </div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Txn ID</th>
+                    <th>User ID</th>
+                    <th>Receiver UPI</th>
+                    <th>Amount</th>
+                    <th>Risk Score</th>
+                    <th>Status</th>
+                    <th>Timestamp</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="txn-feed-body">
+                <tr>
+                    <td colspan="8" style="text-align: center; color: var(--text-muted);">Fetching live transactions...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let volumeChart = null;
+    let verdictChart = null;
+
+    async function refreshDashboard() {
+        try {
+            const res = await fetch('/admin/api/stats');
+            const data = await res.json();
+            
+            if (data.success) {
+                // Update stats
+                document.getElementById('stat-volume').innerText = '₹' + data.total_volume.toLocaleString('en-IN', {minimumFractionDigits: 2});
+                document.getElementById('stat-txns').innerText = data.total_transactions.toLocaleString('en-IN');
+                document.getElementById('stat-risk').innerText = data.average_risk_score.toFixed(1) + '%';
+                document.getElementById('stat-fraud').innerText = data.fraud_rate.toFixed(2) + '%';
+                
+                // Adjust delta class based on values
+                const riskColor = document.getElementById('risk-delta-color');
+                const riskText = document.getElementById('risk-status-text');
+                if (data.average_risk_score > 30) {
+                    riskColor.className = 'stat-delta danger';
+                    riskText.innerText = 'Elevated Risk';
+                } else {
+                    riskColor.className = 'stat-delta down';
+                    riskText.innerText = 'Safe Baseline';
+                }
+
+                const fraudColor = document.getElementById('fraud-delta-color');
+                const fraudText = document.getElementById('fraud-status-text');
+                if (data.fraud_rate > 2.0) {
+                    fraudColor.className = 'stat-delta danger';
+                    fraudText.innerText = 'Threshold Exceeded';
+                } else {
+                    fraudColor.className = 'stat-delta down';
+                    fraudText.innerText = 'Within limits';
+                }
+
+                // Render Charts
+                renderCharts(data.chart_data, data.status_counts);
+            }
+            
+            // Load Transaction Feed
+            await fetchRecentTransactions();
+        } catch (err) {
+            console.error("Dashboard refresh failed:", err);
+        }
+    }
+
+    async function fetchRecentTransactions() {
+        try {
+            const res = await fetch('/admin/api/transactions');
+            const data = await res.json();
+            
+            const tbody = document.getElementById('txn-feed-body');
+            tbody.innerHTML = '';
+            
+            if (data.success && data.transactions.length > 0) {
+                // Take only first 8 for dashboard feed
+                const recent = data.transactions.slice(0, 8);
+                
+                recent.forEach(t => {
+                    let statusClass = 'approved';
+                    if (t.status === 'COMPLETED') statusClass = 'completed';
+                    else if (t.status === 'PENDING') statusClass = 'pending';
+                    else if (t.status === 'CANCELLED') statusClass = 'cancelled';
+                    else if (t.status === 'APPROVED_WITH_WARNING') statusClass = 'warning';
+                    else if (t.status === 'REQUIRES_2FA') statusClass = 'requires_2fa';
+                    else if (t.status === 'BLOCKED') statusClass = 'blocked';
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><strong>${esc(t.txn_id)}</strong></td>
+                        <td>${esc(t.user_id)}</td>
+                        <td title="${esc(t.receiver_upi)}">${esc(t.receiver_upi.length > 22 ? t.receiver_upi.slice(0, 22) + '...' : t.receiver_upi)}</td>
+                        <td>₹${t.amount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                        <td>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="width:50px; background:var(--bg-base); height:6px; border-radius:3px; overflow:hidden;">
+                                    <div style="width:${t.risk_score}%; background: ${t.risk_score > 70 ? 'var(--color-danger)' : t.risk_score > 40 ? 'var(--color-warning)' : 'var(--color-success)'}; height:100%;"></div>
+                                </div>
+                                <span>${t.risk_score.toFixed(0)}%</span>
+                            </div>
+                        </td>
+                        <td><span class="verdict-tag ${statusClass}">${t.status.replace(/_/g, ' ')}</span></td>
+                        <td>${new Date(t.created_at).toLocaleTimeString()}</td>
+                        <td>
+                            <button class="btn btn-secondary" style="padding: 4px 8px; font-size:11px;" onclick="toggleDetails('${esc(t.txn_id)}')">
+                                <i class="fa-solid fa-eye"></i> Details
+                            </button>
+                        </td>
+                    `;
+                    
+                    // Detail Drawer Row
+                    const detailRow = document.createElement('tr');
+                    detailRow.id = `details-${esc(t.txn_id)}`;
+                    detailRow.style.display = 'none';
+                    detailRow.className = 'expandable-row';
+                    
+                    const layers = t.layer_scores || {};
+                    const flags = t.flags || [];
+                    
+                    detailRow.innerHTML = `
+                        <td colspan="8">
+                            <div class="expandable-content">
+                                <h4 style="margin-bottom:12px; font-family:'Outfit';">7-Layer Aggregator Security Breakdown</h4>
+                                <div class="layer-breakdown-grid">
+                                    <div class="layer-card">
+                                        <div class="layer-name">1. Behavioral (38%)</div>
+                                        <div class="layer-score-value" style="color: ${layers.behavioral > 0.5 ? 'var(--color-warning)' : 'var(--text-primary)'}">${(layers.behavioral * 100 || 0).toFixed(0)}%</div>
+                                    </div>
+                                    <div class="layer-card">
+                                        <div class="layer-name">2. Velocity (4%)</div>
+                                        <div class="layer-score-value" style="color: ${layers.velocity > 0.5 ? 'var(--color-warning)' : 'var(--text-primary)'}">${(layers.velocity * 100 || 0).toFixed(0)}%</div>
+                                    </div>
+                                    <div class="layer-card">
+                                        <div class="layer-name">3. Flow Network (3%)</div>
+                                        <div class="layer-score-value" style="color: ${layers.flow > 0.5 ? 'var(--color-warning)' : 'var(--text-primary)'}">${(layers.flow * 100 || 0).toFixed(0)}%</div>
+                                    </div>
+                                    <div class="layer-card">
+                                        <div class="layer-name">4. Payee Trust (28%)</div>
+                                        <div class="layer-score-value" style="color: ${layers.payee > 0.5 ? 'var(--color-danger)' : 'var(--text-primary)'}">${(layers.payee * 100 || 0).toFixed(0)}%</div>
+                                    </div>
+                                    <div class="layer-card">
+                                        <div class="layer-name">5. Compromise (15%)</div>
+                                        <div class="layer-score-value" style="color: ${layers.compromise > 0.5 ? 'var(--color-danger)' : 'var(--text-primary)'}">${(layers.compromise * 100 || 0).toFixed(0)}%</div>
+                                    </div>
+                                    <div class="layer-card">
+                                        <div class="layer-name">6. Amount Limits (10%)</div>
+                                        <div class="layer-score-value" style="color: ${layers.amount > 0.5 ? 'var(--color-warning)' : 'var(--text-primary)'}">${(layers.amount * 100 || 0).toFixed(0)}%</div>
+                                    </div>
+                                    <div class="layer-card">
+                                        <div class="layer-name">7. Web Reputation (2%)</div>
+                                        <div class="layer-score-value" style="color: ${layers.reputation > 0.5 ? 'var(--color-danger)' : 'var(--text-primary)'}">${(layers.reputation * 100 || 0).toFixed(0)}%</div>
+                                    </div>
+                                </div>
+                                ${flags.length > 0 ? `
+                                <div style="margin-top:16px;">
+                                    <strong>Risk Markers Flagged:</strong>
+                                    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;">
+                                        ${flags.map(f => `<span class="badge badge-danger" style="margin:0;">${esc(f)}</span>`).join('')}
+                                    </div>
+                                </div>` : ''}
+                            </div>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                    tbody.appendChild(detailRow);
+                });
+            } else {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No transaction logs recorded yet. Run simulation scripts to generate logs.</td></tr>`;
+            }
+        } catch (err) {
+            console.error("Failed to fetch recent transactions:", err);
+        }
+    }
+
+    function toggleDetails(txnId) {
+        const row = document.getElementById(`details-${txnId}`);
+        if (row.style.display === 'none') {
+            row.style.display = 'table-row';
+        } else {
+            row.style.display = 'none';
+        }
+    }
+
+    function getCssVar(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    function renderCharts(chartData, verdictCounts) {
+        const textSecondary = getCssVar('--text-secondary') || '#a3b3cc';
+        const textMuted = getCssVar('--text-muted') || '#6f7d99';
+        const borderColor = getCssVar('--border-color') || '#2b224e';
+
+        // Volume Chart (Line)
+        const ctxVol = document.getElementById('volumeChart').getContext('2d');
+        if (volumeChart) volumeChart.destroy();
+
+        volumeChart = new Chart(ctxVol, {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [
+                    {
+                        label: 'Total Flow (₹)',
+                        data: chartData.volumes,
+                        borderColor: '#6200ee',
+                        backgroundColor: 'rgba(98, 0, 238, 0.08)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 3,
+                        pointHoverRadius: 6
+                    },
+                    {
+                        label: 'Fraud Blocked (₹)',
+                        data: chartData.frauds.map(count => count * 5000),
+                        borderColor: '#ff1744',
+                        backgroundColor: 'rgba(255, 23, 68, 0.05)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 3,
+                        pointHoverRadius: 6
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: textSecondary, font: { family: 'Inter', size: 12 } } }
+                },
+                scales: {
+                    x: {
+                        grid: { color: borderColor },
+                        ticks: { color: textMuted, font: { family: 'Inter', size: 11 } }
+                    },
+                    y: {
+                        grid: { color: borderColor },
+                        ticks: { color: textMuted, font: { family: 'Inter', size: 11 } }
+                    }
+                }
+            }
+        });
+
+        // Verdict Doughnut Chart
+        const ctxVer = document.getElementById('verdictChart').getContext('2d');
+        if (verdictChart) verdictChart.destroy();
+
+        const labels = Object.keys(verdictCounts);
+        const values = Object.values(verdictCounts);
+
+        // Semantic colors matching CSS variables
+        const colorMap = {
+            'APPROVED': '#00e676',
+            'COMPLETED': '#00e676',
+            'APPROVED_WITH_WARNING': '#ffb300',
+            'REQUIRES_2FA': '#00b0ff',
+            'PENDING': '#ffb300',
+            'CANCELLED': '#94a3b8',
+            'BLOCKED': '#ff1744'
+        };
+        const bgColors = labels.map(l => colorMap[l] || '#6200ee');
+
+        verdictChart = new Chart(ctxVer, {
+            type: 'doughnut',
+            data: {
+                labels: labels.map(l => l.replace(/_/g, ' ')),
+                datasets: [{
+                    data: values,
+                    backgroundColor: bgColors,
+                    borderColor: getCssVar('--bg-surface') || '#140e2b',
+                    borderWidth: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            color: textSecondary,
+                            font: { family: 'Inter', size: 12 },
+                            padding: 16,
+                            usePointStyle: true,
+                            pointStyleWidth: 10
+                        }
+                    }
+                },
+                cutout: '72%'
+            }
+        });
+    }
+
+    // Initialize Dashboard
+    window.onload = function() {
+        refreshDashboard();
+        // Periodically refresh the data
+        setInterval(refreshDashboard, 10000);
+    }
+</script>
+{% endblock %}

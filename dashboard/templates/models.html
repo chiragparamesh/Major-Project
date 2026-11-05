@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-title">
+        <h2>Model Performance & Auditing</h2>
+        <p>Monitor accuracy, recall, and AUC for the 7 ensemble classifiers and trigger retraining</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-primary" id="retrain-btn" onclick="triggerRetraining()"><i class="fa-solid fa-arrows-spin"></i> Retrain Ensemble</button>
+    </div>
+</div>
+
+<!-- Retrain Notice Banner (hidden by default) -->
+<div id="retrain-banner" class="card" style="display:none; background-color:var(--color-info-bg); border-color:var(--color-info); margin-bottom:28px; align-items:center; flex-direction:row; gap:16px;">
+    <i class="fa-solid fa-arrows-spin animate-pulse" style="font-size:24px; color:var(--color-info);"></i>
+    <div>
+        <h4 style="color:var(--color-info); font-family:'Outfit';">Model Retraining Process Initiated</h4>
+        <p style="font-size:12px; margin-top:2px;">The 7-layer machine learning models are being refit on the raw datasets in the background. This will take a few minutes. Check this page later for updated metrics.</p>
+    </div>
+</div>
+
+<!-- Models Performance Grid -->
+<div class="card">
+    <div class="table-header">
+        <h3>Model Classifier Stack</h3>
+    </div>
+    <div class="models-list" id="models-list-container">
+        <!-- Model items loaded dynamically -->
+        <div style="text-align:center; padding:40px; color:var(--text-muted);">
+            <i class="fa-solid fa-circle-notch fa-spin" style="font-size:24px; margin-bottom:12px;"></i>
+            <p>Loading model audit logs...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const MODEL_DESCRIPTIONS = {
+        'XGBoost': 'Gradient Boosted Trees. Highly efficient for multi-modal feature combinations and tabular data splits.',
+        'Random Forest': 'Random Forest Ensemble. Evaluates bootstrap decision trees for bagging stability and low variance.',
+        'Logistic Regression': 'L2-regularized linear classifier. Acts as the baseline metric for standard model comparisons.',
+        'Isolation Forest': 'Unsupervised Anomaly Detector. Calculates feature isolation paths to identify outlier fraud vectors.',
+        'Neural Network': 'Deep Feed-Forward Network. Multi-layer perceptron fit using custom Focal Loss to handle severe class imbalances.',
+        'LSTM': 'Recurrent Sequence Network. Evaluates transaction histories chronologically with self-Attention weight mapping.',
+        'Autoencoder': 'Deep Reconstruction Autoencoder. Measures feature reconstruction loss (MSE) on normal transaction patterns to spot unlabelled anomalies.'
+    };
+
+    async function loadModelMetrics() {
+        try {
+            const res = await fetch('/admin/api/models/metrics');
+            const data = await res.json();
+            
+            const container = document.getElementById('models-list-container');
+            container.innerHTML = '';
+            
+            if (data.success && data.metrics.length > 0) {
+                data.metrics.forEach(m => {
+                    const desc = MODEL_DESCRIPTIONS[m.model_name] || 'Ensemble helper classifier.';
+                    
+                    const item = document.createElement('div');
+                    item.className = 'model-item';
+                    item.innerHTML = `
+                        <div class="model-meta" style="max-width: 450px;">
+                            <div class="model-name">${esc(m.model_name)}</div>
+                            <div style="font-size:12px; color:var(--text-secondary); margin: 4px 0 8px 0;">${desc}</div>
+                            <div class="model-trained-at"><i class="fa-solid fa-clock-rotate-left"></i> Last Fit: ${new Date(m.trained_at).toLocaleString()}</div>
+                        </div>
+                        
+                        <div class="model-stats">
+                            <div class="metric-box">
+                                <span class="metric-label">AUC Score</span>
+                                <span class="metric-val" style="color:var(--color-brand);">${m.auc_score.toFixed(4)}</span>
+                            </div>
+                            <div class="metric-box">
+                                <span class="metric-label">Recall</span>
+                                <span class="metric-val" style="color:var(--color-success);">${m.recall.toFixed(4)}</span>
+                            </div>
+                            <div class="metric-box">
+                                <span class="metric-label">Precision</span>
+                                <span class="metric-val" style="color:var(--color-warning);">${m.precision.toFixed(4)}</span>
+                            </div>
+                            <div class="metric-box">
+                                <span class="metric-label">F1-Score</span>
+                                <span class="metric-val">${m.f1_score.toFixed(4)}</span>
+                            </div>
+                            <div class="metric-box" title="Share of real fraud caught while falsely flagging only 1% of genuine payments (held-out test set)">
+                                <span class="metric-label">Recall @1% FPR</span>
+                                <span class="metric-val" style="color:var(--color-info, #38bdf8);">${(m.recall_at_1pct_fpr ?? 0).toFixed(4)}</span>
+                            </div>
+                            <div class="metric-box">
+                                <span class="metric-label">Accuracy</span>
+                                <span class="metric-val" style="color:var(--text-muted);">${m.accuracy.toFixed(4)}</span>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(item);
+                });
+            } else {
+                container.innerHTML = `
+                    <div style="text-align:center; padding:40px; color:var(--text-muted);">
+                        <i class="fa-solid fa-triangle-exclamation" style="font-size:24px; margin-bottom:12px; color:var(--color-warning);"></i>
+                        <p>No model metrics found. Run train_all_models.py to create backend/models/mlbfd_mega_metrics.json.</p>
+                    </div>
+                `;
+            }
+        } catch (err) {
+            console.error("Failed to load model metrics:", err);
+        }
+    }
+
+    async function triggerRetraining() {
+        const btn = document.getElementById('retrain-btn');
+        const banner = document.getElementById('retrain-banner');
+        
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Training...`;
+        banner.style.display = 'flex';
+        
+        try {
+            const res = await fetch('/admin/api/models/retrain', { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                // Keep banner visible and restore button after a timeout
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = `<i class="fa-solid fa-arrows-spin"></i> Retrain Ensemble`;
+                }, 10000);
+            } else {
+                alert("Error starting retraining: " + data.message);
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-arrows-spin"></i> Retrain Ensemble`;
+                banner.style.display = 'none';
+            }
+        } catch (err) {
+            console.error("Failed to start retraining:", err);
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-arrows-spin"></i> Retrain Ensemble`;
+            banner.style.display = 'none';
+        }
+    }
+
+    window.onload = function() {
+        loadModelMetrics();
+    }
+</script>
+{% endblock %}

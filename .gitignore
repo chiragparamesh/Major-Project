@@ -1,0 +1,47 @@
+# Environment and credentials
+.env
+.env.*
+!.env.example
+
+# Databases
+*.sqlite3
+instance/
+
+# Machine learning models & datasets
+models/
+Datasets/
+*.pkl
+*.keras
+*.h5
+*.parquet
+backups/
+data/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+venv*/
+env/
+ENV/
+
+# OS specific
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store
+
+# Runtime logs, poller lock, doctor state
+logs/
+
+# Local tool binaries
+backend/bin/
+
+# Service-account keys (never commit)
+secrets/
+*firebase-adminsdk*.json

@@ -1,0 +1,14 @@
+TEST SET: Total=12,000 rows, Frauds=902 (7.52%), Split=Chronological/time-based holdout (70% train [56,000], 15% val [12,000], 15% test [12,000]), Sources=PaySim (3,000 test), IEEE-CIS (3,000 test), BAF (3,000 test), UPI Behavioral Simulator (3,000 test)
+ENSEMBLE USED: Stacking Meta-Classifier (Learned Logistic Regression Stacking meta-classifier selected in backend/models/fusion.json, with static 7-layer weights as fallback)
+ENSEMBLE TEST METRICS: PR-AUC=0.3840, ROC-AUC=0.8342, Recall@1%FPR=17.07% (154/902), Precision=58.78% (154/262), F1=0.2646, CM(TN,FP,FN,TP)=(TN=10990, FP=108, FN=748, TP=154)
+REAL-DATA ONLY: Samples=9,000, Frauds=776, PR-AUC=0.2568, ROC-AUC=0.7746, Recall@1%FPR=6.83%, Precision=NOT REPORTED (checked ACCURACY_REPORT.md), F1=NOT REPORTED (checked ACCURACY_REPORT.md), CM=NOT REPORTED (checked ACCURACY_REPORT.md)
+SIMULATOR ONLY: Samples=3,000, Frauds=126, PR-AUC=0.8452, ROC-AUC=0.9370, Recall@1%FPR=80.16%, Precision=NOT REPORTED (checked ACCURACY_REPORT.md), F1=NOT REPORTED (checked ACCURACY_REPORT.md), CM=NOT REPORTED (checked ACCURACY_REPORT.md)
+PER-MODEL: XGBoost: PR-AUC=0.3442, ROC-AUC=0.7946; RandomForest: PR-AUC=0.2954, ROC-AUC=0.7883; LogReg: PR-AUC=0.3093, ROC-AUC=0.7692; IsolationForest: PR-AUC=0.1040, ROC-AUC=0.5899; DNN: PR-AUC=0.3603, ROC-AUC=0.8138; LSTM: PR-AUC=0.3769, ROC-AUC=0.8287; Autoencoder: PR-AUC=0.1769, ROC-AUC=0.5151
+PER-FRAUD-TYPE RECALL: Vishing=100.0% (1/1), Mule=100.0% (1/1), Account Takeover=100.0% (1/1), QR Overlay=100.0% (1/1), Phishing Domain=100.0% (1/1), Velocity Burst=100.0% (1/1), Low-and-Slow=NOT FOUND (checked ACCURACY_REPORT.md; Smurfing/Structuring=100.0% [1/1])
+SCENARIOS: 21/21 (100.0%)
+LATENCY: p50=497.91 ms, p95=790.93 ms, p99=1257.15 ms (n=1000)
+TESTS PASSING: 156 (from PROGRESS_REPORT.md: 156 passed, 0 failed, 0 errors, 89 warnings)
+OVERLAY STILL USED IN TRAINING: no (backend/data_processor.py lines 142-152 purged; backend/train_all_models.py does not import or call data_processor.py)
+MODEL / REPORT DATE: ACCURACY_REPORT.md generated 2026-10-30 06:59:35 UTC; Model files dated 2026-10-30 (metrics: 2026-10-30T06:27:15, thresholds: 2026-10-30 12:02:50, fusion: 2026-10-30 12:03:58)
+WARNINGS: (1) Scenario suite reports exact 1.0000 for PR-AUC, ROC-AUC, and 100% recall because all 21 scenarios are scripted functional unit/integration test cases, not an empirical dataset. (2) Real benchmark datasets (PaySim/IEEE-CIS/BAF) have low recall at 1% FPR (6.83%) vs realistic simulator data (80.16%) because legacy card/bank tabular datasets lack mobile UPI signals (geofence, QR parsing, device tokens). (3) Low-and-slow fraud category is not explicitly named in ACCURACY_REPORT.md (represented under Smurfing / Structuring).
+

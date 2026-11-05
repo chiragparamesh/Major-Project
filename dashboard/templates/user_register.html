@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLBFD - Secure User Registration Wizard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- User Stylesheet -->
+    <link rel="stylesheet" href="/static/css/user.css">
+    <!-- Cloudflare Turnstile API -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+    <style>
+        .wizard-container {
+            max-width: 620px;
+            width: 100%;
+            margin: 24px auto;
+        }
+        .wizard-steps {
+            display: flex;
+            justify-content: space-between;
+            position: relative;
+            margin-bottom: 28px;
+        }
+        .wizard-steps::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 40px;
+            right: 40px;
+            height: 2px;
+            background: var(--border-color, #2b224e);
+            z-index: 1;
+        }
+        .step-progress-bar {
+            position: absolute;
+            top: 20px;
+            left: 40px;
+            height: 2px;
+            background: var(--color-brand, #6200ee);
+            z-index: 2;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        .step-item {
+            position: relative;
+            z-index: 3;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: default;
+        }
+        .step-circle {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: var(--bg-surface, #140e2b);
+            border: 2px solid var(--border-color, #2b224e);
+            color: var(--text-muted, #6f7d99);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.25s ease;
+        }
+        .step-item.active .step-circle {
+            border-color: var(--color-brand, #6200ee);
+            background: var(--color-brand, #6200ee);
+            color: #ffffff;
+            box-shadow: 0 0 16px rgba(98, 0, 238, 0.4);
+        }
+        .step-item.completed .step-circle {
+            border-color: var(--color-success, #00e676);
+            background: var(--color-success, #00e676);
+            color: #0a0616;
+        }
+        .step-label {
+            margin-top: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted, #6f7d99);
+        }
+        .step-item.active .step-label {
+            color: var(--text-primary, #f8fafc);
+            font-weight: 600;
+        }
+        .step-item.completed .step-label {
+            color: var(--color-success, #00e676);
+        }
+        .wizard-pane {
+            display: none;
+        }
+        .wizard-pane.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .otp-boxes {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .otp-input-field {
+            width: 48px;
+            height: 54px;
+            font-size: 22px;
+            font-weight: 700;
+            text-align: center;
+            border-radius: 8px;
+            border: 2px solid var(--border-color, #2b224e);
+            background: var(--bg-surface, #140e2b);
+            color: var(--text-primary, #f8fafc);
+        }
+        .otp-input-field:focus {
+            border-color: var(--color-brand, #6200ee);
+            outline: none;
+            box-shadow: 0 0 10px rgba(98, 0, 238, 0.3);
+        }
+        .telegram-action-box {
+            background: rgba(33, 150, 243, 0.08);
+            border: 1px solid rgba(33, 150, 243, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            margin: 16px 0;
+        }
+        .btn-telegram-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: #229ED9;
+            color: #ffffff;
+            font-weight: 600;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            margin: 12px 0;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .btn-telegram-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 14px rgba(34, 158, 217, 0.4);
+            color: #ffffff;
+        }
+        .instruction-list {
+            text-align: left;
+            margin: 12px 0;
+            font-size: 13px;
+            color: var(--text-secondary, #a3b3cc);
+            line-height: 1.6;
+        }
+        .instruction-list li {
+            margin-bottom: 6px;
+        }
+        .consent-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin: 16px 0 20px 0;
+            font-size: 12px;
+            color: var(--text-secondary, #a3b3cc);
+        }
+        .consent-row input[type="checkbox"] {
+            margin-top: 3px;
+            accent-color: var(--color-brand, #6200ee);
+            width: 16px;
+            height: 16px;
+        }
+    </style>
+</head>
+<body class="auth-body">
+    <!-- Demo Virtual Money Banner -->
+    <div class="demo-banner" style="position: fixed; top: 0; left: 0; right: 0; z-index: 9999; background: linear-gradient(90deg, #6200ee 0%, #03dac6 100%); color: #0a0616; padding: 6px 16px; font-weight: 700; font-size: 13px; text-align: center; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+        <i class="fa-solid fa-flask"></i>
+        <span>MLBFD demo - virtual money only</span>
+    </div>
+    <div class="auth-container wizard-container" style="margin-top: 40px;">
+        <div class="auth-card register-card animate-fade-in">
+            <div class="auth-header">
+                <div class="auth-logo">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <h2>MLBFD Registration Wizard</h2>
+                <p>3-Step Account Verification & Virtual Balance Setup</p>
+            </div>
+
+            <!-- Wizard Progress Steps -->
+            <div class="wizard-steps">
+                <div class="step-progress-bar" id="step-progress-bar"></div>
+                <div class="step-item active" id="step-node-1">
+                    <div class="step-circle"><i class="fa-solid fa-user-pen"></i></div>
+                    <div class="step-label">1. Details</div>
+                </div>
+                <div class="step-item" id="step-node-2">
+                    <div class="step-circle"><i class="fa-solid fa-envelope"></i></div>
+                    <div class="step-label">2. Email OTP</div>
+                </div>
+                <div class="step-item" id="step-node-3">
+                    <div class="step-circle"><i class="fa-solid fa-paper-plane"></i></div>
+                    <div class="step-label">3. Telegram</div>
+                </div>
+            </div>
+
+            <!-- Global Alerts -->
+            <div class="alert alert-danger" id="wizard-error" style="display: none;">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span id="wizard-error-msg">Error</span>
+            </div>
+            <div class="alert alert-success" id="wizard-success" style="display: none;">
+                <i class="fa-solid fa-circle-check"></i>
+                <span id="wizard-success-msg">Success</span>
+            </div>
+
+            <!-- ================= STEP 1: ACCOUNT DETAILS ================= -->
+            <div class="wizard-pane active" id="pane-step-1">
+                <form id="form-step-1" onsubmit="submitStep1(event)">
+                    <div class="form-row">
+                        <div class="form-group col">
+                            <label for="full_name">Full Name</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-user input-icon"></i>
+                                <input type="text" id="full_name" required placeholder="e.g. Ramesh Kumar">
+                            </div>
+                        </div>
+                        <div class="form-group col">
+                            <label for="user_id">Username / User ID</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-at input-icon"></i>
+                                <input type="text" id="user_id" required placeholder="e.g. ramesh_k">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col">
+                            <label for="phone">Phone Number (10 digits)</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-phone input-icon"></i>
+                                <input type="tel" id="phone" required placeholder="e.g. 9876543210" maxlength="13">
+                            </div>
+                        </div>
+                        <div class="form-group col">
+                            <label for="email">Email Address</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-envelope input-icon"></i>
+                                <input type="email" id="email" required placeholder="name@example.com">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col">
+                            <label for="login_pin">6-Digit Login PIN</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-lock input-icon"></i>
+                                <input type="password" id="login_pin" required maxlength="6" pattern="\d{6}" inputmode="numeric" placeholder="6-digit PIN">
+                            </div>
+                            <small class="form-help">Used only to sign in.</small>
+                        </div>
+                        <div class="form-group col">
+                            <label for="payment_pin">6-Digit Payment PIN</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-credit-card input-icon"></i>
+                                <input type="password" id="payment_pin" required maxlength="6" pattern="\d{6}" inputmode="numeric" placeholder="Different 6-digit PIN">
+                            </div>
+                            <small class="form-help">Must differ from Login PIN.</small>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col">
+                            <label for="security_question">Security Question</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-circle-question input-icon"></i>
+                                <select id="security_question">
+                                    <option value="What is the name of your first school?">What is the name of your first school?</option>
+                                    <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                                    <option value="What was your first pet's name?">What was your first pet's name?</option>
+                                    <option value="What city were you born in?">What city were you born in?</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group col">
+                            <label for="security_answer">Security Answer</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-key input-icon"></i>
+                                <input type="text" id="security_answer" required placeholder="Your answer (case-insensitive)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="consent-row">
+                        <input type="checkbox" id="consent_checkbox" required>
+                        <label for="consent_checkbox">
+                            I consent to MLBFD processing my transactions with multi-layer biometric, spatial, graph, and ML fraud prevention models. I understand this demo uses virtual money only.
+                        </label>
+                    </div>
+
+                    <!-- Bot & Abuse Protection Fields -->
+                    <div style="display:none !important; position:absolute; left:-9999px;">
+                        <label for="hp_website">Leave this field blank</label>
+                        <input type="text" id="hp_website" name="website" tabindex="-1" autocomplete="off">
+                    </div>
+                    <input type="hidden" id="form_timing_token" value="">
+                    <input type="hidden" id="form_started_at" value="">
+
+                    <!-- Cloudflare Turnstile Container -->
+                    <div id="turnstile-container" style="margin: 14px 0; display: flex; justify-content: center;"></div>
+
+                    <button type="submit" class="btn-auth" id="btn-step-1">
+                        <span>Continue to Email Verification</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                </form>
+            </div>
+
+            <!-- ================= STEP 2: EMAIL VERIFICATION ================= -->
+            <div class="wizard-pane" id="pane-step-2">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <i class="fa-solid fa-envelope-circle-check" style="font-size: 40px; color: var(--color-brand); margin-bottom: 12px;"></i>
+                    <h3>Verify Your Email</h3>
+                    <p style="color: var(--text-secondary); font-size: 13px;">
+                        We sent a 6-digit verification code to <strong id="display-email">your email</strong>.
+                    </p>
+                </div>
+
+                <div id="email-delivery" style="display:none;margin:8px 0;"></div>
+
+                <form id="form-step-2" onsubmit="submitStep2(event)">
+                    <div style="display: flex; justify-content: center; margin: 16px 0;">
+                        <input type="text" id="email_otp_input" maxlength="6" pattern="\d{6}" inputmode="numeric" placeholder="123456" 
+                               style="width: 200px; height: 50px; font-size: 24px; letter-spacing: 6px; text-align: center; border-radius: 8px; border: 2px solid var(--border-color); background: var(--bg-surface); color: var(--text-primary);" required>
+                    </div>
+
+                    <button type="submit" class="btn-auth" id="btn-step-2" style="margin-top: 16px;">
+                        <span>Verify Email Code</span>
+                        <i class="fa-solid fa-check"></i>
+                    </button>
+                </form>
+            </div>
+
+            <!-- ================= STEP 3: TELEGRAM LINK & VERIFICATION ================= -->
+            <div class="wizard-pane" id="pane-step-3">
+                <div style="text-align: center; margin-bottom: 16px;">
+                    <i class="fa-brands fa-telegram" style="font-size: 44px; color: #229ED9; margin-bottom: 10px;"></i>
+                    <h3>Telegram Bot Security Link</h3>
+                    <p style="color: var(--text-secondary); font-size: 13px;">
+                        Telegram is required to receive dual-channel security alerts and transaction OTPs.
+                    </p>
+                </div>
+
+                <div class="telegram-action-box">
+                    <ol class="instruction-list">
+                        <li>Click <strong>Open Telegram Bot</strong> below (or open the link on your phone).</li>
+                        <li>Press <strong>Start</strong> in Telegram to link your account.</li>
+                        <li>Tap the <strong>Share Registered Contact</strong> button when prompted (it must be the phone number you registered).</li>
+                        <li>This page detects the link automatically and sends your Telegram code.</li>
+                    </ol>
+
+                    <a href="#" target="_blank" rel="noopener" class="btn-telegram-link" id="telegram-link-btn">
+                        <i class="fa-brands fa-telegram fa-lg"></i>
+                        <span>Open MLBFD Telegram Bot</span>
+                    </a>
+                    <p style="font-size:12px;color:var(--text-secondary);margin-top:8px;word-break:break-all;">
+                        Link: <code id="telegram-link-text">-</code>
+                    </p>
+                    <p id="tg-link-status" style="font-size:13px;margin-top:6px;">Waiting for Start + Share Contact…</p>
+                </div>
+                <div id="telegram-delivery" style="display:none;margin:8px 0;"></div>
+
+                <div style="text-align: center; margin: 16px 0;">
+                    <button type="button" class="btn-auth" id="btn-request-tg-otp" onclick="requestTelegramOtp()" style="background: var(--bg-surface-hover); border: 1px solid var(--border-color); margin-bottom: 16px;">
+                        <i class="fa-solid fa-paper-plane"></i>
+                        <span>I Shared Contact — Send Telegram OTP</span>
+                    </button>
+
+                    <form id="form-step-3" onsubmit="submitStep3(event)">
+                        <div style="display: flex; justify-content: center; margin: 12px 0;">
+                            <input type="text" id="telegram_otp_input" maxlength="6" pattern="\d{6}" inputmode="numeric" placeholder="123456" 
+                                   style="width: 200px; height: 50px; font-size: 24px; letter-spacing: 6px; text-align: center; border-radius: 8px; border: 2px solid var(--border-color); background: var(--bg-surface); color: var(--text-primary);" required>
+                        </div>
+
+                        <button type="submit" class="btn-auth" id="btn-step-3" style="margin-top: 16px;">
+                            <span>Complete Account Activation</span>
+                            <i class="fa-solid fa-circle-check"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="auth-footer">
+                <p>Already have an account? <a href="/login">Sign In</a></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/otp_status.js"></script>
+    <script>
+
+// Escape any server/user-supplied text before it goes into innerHTML.
+function esc(value) {
+    return String(value === undefined || value === null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+        // State
+        let regUserId = "";
+        let regEmail = "";
+        let telegramLinkUrl = "";
+        let turnstileToken = "";
+        let turnstileWidgetId = null;
+
+        // Fetch timing token & setup Turnstile on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            document.getElementById('form_started_at').value = (Date.now() / 1000).toString();
+            try {
+                const res = await fetch('/api/register/timing_token');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.timing_token) {
+                        document.getElementById('form_timing_token').value = data.timing_token;
+                    }
+                    if (data.turnstile_site_key && data.turnstile_site_key !== "MOCK" && window.turnstile) {
+                        turnstileWidgetId = turnstile.render('#turnstile-container', {
+                            sitekey: data.turnstile_site_key,
+                            theme: 'dark',
+                            callback: function(token) {
+                                turnstileToken = token;
+                            }
+                        });
+                    }
+                }
+            } catch (e) {
+                console.warn("Could not load registration timing token:", e);
+            }
+        });
+
+        // Get or generate Device ID (stored in localStorage)
+        function getOrCreateDeviceId() {
+            let devId = localStorage.getItem('mlbfd_device_id');
+            if (!devId) {
+                devId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'dev_' + Math.random().toString(36).substring(2, 15);
+                localStorage.setItem('mlbfd_device_id', devId);
+            }
+            return devId;
+        }
+
+        function showWizardError(msg) {
+            const errDiv = document.getElementById('wizard-error');
+            document.getElementById('wizard-error-msg').innerText = msg;
+            errDiv.style.display = 'flex';
+            document.getElementById('wizard-success').style.display = 'none';
+        }
+
+        function showWizardSuccess(msg) {
+            const sucDiv = document.getElementById('wizard-success');
+            document.getElementById('wizard-success-msg').innerText = msg;
+            sucDiv.style.display = 'flex';
+            document.getElementById('wizard-error').style.display = 'none';
+        }
+
+        function goToStep(stepNum) {
+            document.getElementById('wizard-error').style.display = 'none';
+            document.getElementById('wizard-success').style.display = 'none';
+
+            // Update step nodes
+            for (let i = 1; i <= 3; i++) {
+                const node = document.getElementById(`step-node-${i}`);
+                const pane = document.getElementById(`pane-step-${i}`);
+                if (i < stepNum) {
+                    node.className = 'step-item completed';
+                    pane.classList.remove('active');
+                } else if (i === stepNum) {
+                    node.className = 'step-item active';
+                    pane.classList.add('active');
+                } else {
+                    node.className = 'step-item';
+                    pane.classList.remove('active');
+                }
+            }
+
+            // Progress bar width
+            const bar = document.getElementById('step-progress-bar');
+            if (stepNum === 1) bar.style.width = '0%';
+            if (stepNum === 2) bar.style.width = '50%';
+            if (stepNum === 3) bar.style.width = '100%';
+        }
+
+        // Parse an API response without throwing on HTML/plain-text error pages.
+        // Returns { ok, data, message, status } where message is always human readable.
+        async function readApiResponse(response) {
+            const status = response.status;
+            const raw = await response.text();
+            let data = null;
+            try {
+                data = raw ? JSON.parse(raw) : null;
+            } catch (e) {
+                data = null;
+            }
+            let message = "";
+            if (data && typeof data === "object") {
+                message = data.message || data.error || "";
+                if (data.error && data.message) message = `${esc(data.message)} [${esc(data.error)}]`;
+            }
+            if (!message) {
+                message = raw ? raw.substring(0, 300) : `Request failed with HTTP ${status}.`;
+            }
+            return { ok: response.ok, data, message, status };
+        }
+
+        async function submitStep1(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-step-1');
+            btn.disabled = true;
+            btn.innerHTML = `<span>Validating Details...</span> <i class="fa-solid fa-spinner animate-spin"></i>`;
+
+            const full_name = document.getElementById('full_name').value.trim();
+            const user_id = document.getElementById('user_id').value.trim();
+            const phone = document.getElementById('phone').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const login_pin = document.getElementById('login_pin').value.trim();
+            const payment_pin = document.getElementById('payment_pin').value.trim();
+            const security_question = document.getElementById('security_question').value.trim();
+            const security_answer = document.getElementById('security_answer').value.trim();
+            const consent = document.getElementById('consent_checkbox').checked;
+            const website = document.getElementById('hp_website') ? document.getElementById('hp_website').value : "";
+            const form_timing_token = document.getElementById('form_timing_token') ? document.getElementById('form_timing_token').value : "";
+            const form_started_at = document.getElementById('form_started_at') ? parseFloat(document.getElementById('form_started_at').value) : null;
+
+            try {
+                const response = await fetch('/api/register/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        full_name,
+                        user_id,
+                        phone,
+                        email,
+                        login_pin,
+                        payment_pin,
+                        security_question,
+                        security_answer,
+                        consent,
+                        website,
+                        form_timing_token,
+                        form_started_at,
+                        turnstile_token: turnstileToken
+                    })
+                });
+
+                const { data, message, status } = await readApiResponse(response);
+                if (data && data.success) {
+                    regUserId = user_id;
+                    regEmail = email;
+                    telegramLinkUrl = data.telegram_link;
+
+                    document.getElementById('display-email').innerText = regEmail;
+                    document.getElementById('telegram-link-btn').href = telegramLinkUrl;
+                    document.getElementById('telegram-link-text').textContent = telegramLinkUrl || 'unavailable';
+                    MLBFDOtp.render(document.getElementById('email-delivery'),
+                        { email: (data.delivery && data.delivery.email) || 'sent' },
+                        { purpose: 'SIGNUP', userId: regUserId });
+
+                    showWizardSuccess("Verification code sent to your email!");
+                    goToStep(2);
+                } else {
+                    showWizardError(`Registration failed (HTTP ${status}): ${message}`);
+                }
+            } catch (err) {
+                console.error('register/start fetch error:', err);
+                showWizardError("Network error. Please check server connection: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<span>Continue to Email Verification</span> <i class="fa-solid fa-arrow-right"></i>`;
+            }
+        }
+
+        async function submitStep2(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-step-2');
+            const code = document.getElementById('email_otp_input').value.trim();
+
+            btn.disabled = true;
+            btn.innerHTML = `<span>Verifying Code...</span> <i class="fa-solid fa-spinner animate-spin"></i>`;
+
+            try {
+                const response = await fetch('/api/register/verify_email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: regUserId,
+                        code: code
+                    })
+                });
+
+                const { data, message, status } = await readApiResponse(response);
+                if (data && data.success) {
+                    showWizardSuccess("Email verified! Now link Telegram.");
+                    goToStep(3);
+                    startTelegramLinkWatch();
+                } else {
+                    showWizardError(`Email verification failed (HTTP ${status}): ${message}`);
+                }
+            } catch (err) {
+                console.error(err);
+                showWizardError("Network error while verifying email code.");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<span>Verify Email Code</span> <i class="fa-solid fa-check"></i>`;
+            }
+        }
+
+        let tgWatch = null;
+        let tgOtpRequested = false;
+        function startTelegramLinkWatch() {
+            if (tgWatch) tgWatch.stop();
+            const statusEl = document.getElementById('tg-link-status');
+            tgWatch = MLBFDOtp.pollTelegram(regUserId, (st) => {
+                if (st.timeout) {
+                    statusEl.textContent = 'Still not linked. Open the link again, press Start, then Share Contact.';
+                } else if (st.telegram_verified) {
+                    statusEl.textContent = 'Telegram linked and contact verified.';
+                    if (!tgOtpRequested) { tgOtpRequested = true; requestTelegramOtp(); }
+                } else if (st.telegram_linked) {
+                    statusEl.textContent = 'Start received. Now tap "Share Registered Contact" in Telegram.';
+                } else {
+                    statusEl.textContent = 'Waiting for Start + Share Contact…';
+                }
+            });
+        }
+
+        async function requestTelegramOtp() {
+            const btn = document.getElementById('btn-request-tg-otp');
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Sending OTP...`;
+
+            try {
+                const response = await fetch('/api/register/send_telegram_otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: regUserId })
+                });
+
+                const { data, message, status } = await readApiResponse(response);
+                if (data && data.delivery) {
+                    MLBFDOtp.render(document.getElementById('telegram-delivery'), data.delivery,
+                        { purpose: 'SIGNUP', userId: regUserId });
+                }
+                if (data && data.success) {
+                    showWizardSuccess("Telegram code sent! Check your Telegram chat.");
+                } else {
+                    showWizardError(`Telegram OTP failed (HTTP ${status}): ${message}`);
+                }
+            } catch (err) {
+                console.error(err);
+                showWizardError("Network error sending Telegram OTP.");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> <span>Send Telegram OTP</span>`;
+            }
+        }
+
+        async function submitStep3(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-step-3');
+            const code = document.getElementById('telegram_otp_input').value.trim();
+            const deviceId = getOrCreateDeviceId();
+
+            btn.disabled = true;
+            btn.innerHTML = `<span>Activating Account...</span> <i class="fa-solid fa-spinner animate-spin"></i>`;
+
+            try {
+                const response = await fetch('/api/register/verify_telegram', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Device-ID': deviceId
+                    },
+                    body: JSON.stringify({
+                        user_id: regUserId,
+                        code: code,
+                        device_id: deviceId
+                    })
+                });
+
+                const { data, message, status } = await readApiResponse(response);
+                if (data && data.success && data.status === "ACTIVE") {
+                    // Store tokens & assigned UPI ID
+                    if (data.access_token) {
+                        localStorage.setItem('mlbfd_token', data.access_token);
+                        localStorage.setItem('token', data.access_token);
+                    }
+                    if (data.refresh_token) {
+                        localStorage.setItem('mlbfd_refresh_token', data.refresh_token);
+                        localStorage.setItem('refresh_token', data.refresh_token);
+                    }
+                    localStorage.setItem('mlbfd_user_id', regUserId);
+                    if (data.upi_id) {
+                        localStorage.setItem('mlbfd_upi_id', data.upi_id);
+                        localStorage.setItem('user_upi', data.upi_id);
+                    }
+
+                    showWizardSuccess(`Account Activated! Assigned UPI ID: ${esc(data.upi_id)}. ₹100,000 credited! Redirecting to dashboard...`);
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 2000);
+                } else {
+                    showWizardError(`Activation failed (HTTP ${status}): ${message}`);
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Complete Account Activation</span> <i class="fa-solid fa-circle-check"></i>`;
+                }
+            } catch (err) {
+                console.error(err);
+                showWizardError("Network error completing activation.");
+                btn.disabled = false;
+                btn.innerHTML = `<span>Complete Account Activation</span> <i class="fa-solid fa-circle-check"></i>`;
+            }
+        }
+    </script>
+</body>
+</html>
