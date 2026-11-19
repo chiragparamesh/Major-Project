@@ -339,3 +339,109 @@ def test_admin_unlock_clears_all_lockouts_and_refuses_pending(client, app):
     assert r.status_code == 409
     assert User.query.filter_by(user_id="pend_user").first().status == "PENDING"
     assert client.post("/admin/api/users/nobody/toggle-lock", json={"lock": True}).status_code == 404
+
+
+def test_pin_reset_response_identifies_the_user(client, app, sender):
+    """The web app must learn WHO signed in after a reset, or the dashboard bounces to login in a loop."""
+    _active_user("who_user", "+919812345689")
+    client.post("/api/pin/forgot/start", json={"user_id": "who_user"})
+    r = client.post("/api/pin/forgot/verify", json={
+        "user_id": "who_user", "email_code": sender.code("who_user", "EMAIL"),
+        "telegram_code": sender.code("who_user", "TELEGRAM")})
+    r = client.post("/api/pin/forgot/reset", json={"reset_token": r.get_json()["reset_token"],
+                                                   "security_answer": "pune", "new_pin": "739151",
+                                                   "pin_type": "login", "device_id": "d2"})
+    body = r.get_json()
+    assert body["user_id"] == "who_user" and body["upi_id"].endswith("@mlbfd")
+
+
+def test_web_session_guards_cannot_loop():
+    """Static guard on the two pages that caused the redirect loop."""
+    base = os.path.join(os.path.dirname(__file__), "..", "dashboard", "templates")
+    login = open(os.path.join(base, "user_login.html"), encoding="utf-8").read()
+    dash = open(os.path.join(base, "user_dashboard.html"), encoding="utf-8").read()
+    # login only auto-signs-in a COMPLETE session (needs mlbfd_user_id) and drops stale ones
+    assert "clearStaleSession" in login and "mlbfd_user_id" in login[login.index("async function tryAutoRefresh"):login.index("tryAutoRefresh();")]
+    # the dashboard's early guard clears leftovers before redirecting
+    guard = dash[dash.index("Immediate Authentication Guard"):dash.index("</head>")]
+    assert "removeItem" in guard and guard.index("removeItem") < guard.index("location.replace")
+    # the reset handler stores the identity
+    assert "setItem('mlbfd_user_id'" in login[login.index("async function handleForgotReset"):]
+
+
+def test_device_used_for_pin_reset_is_trusted_at_next_login(client, app, sender):
+    """After a reset the user must be able to sign in on that same device without a second OTP round."""
+    _active_user("trust_user", "+919812345690")
+    client.post("/api/pin/forgot/start", json={"user_id": "trust_user"})
+    r = client.post("/api/pin/forgot/verify", json={
+        "user_id": "trust_user", "email_code": sender.code("trust_user", "EMAIL"),
+        "telegram_code": sender.code("trust_user", "TELEGRAM")})
+    client.post("/api/pin/forgot/reset", json={"reset_token": r.get_json()["reset_token"],
+                                              "security_answer": "pune", "new_pin": "739151",
+                                              "pin_type": "login", "device_id": "dev-after-reset"})
+    res = client.post("/api/login", json={"user_id": "trust_user", "login_pin": "739151", "device_id": "dev-after-reset"})
+    assert res.get_json()["status"] == "LOGGED_IN", res.get_json()
+    # a different device still needs both codes
+    res = client.post("/api/login", json={"user_id": "trust_user", "login_pin": "739151", "device_id": "someone-elses-laptop"})
+    assert res.get_json()["status"] == "OTP_REQUIRED"
+
+
+def test_legacy_device_record_key_is_still_trusted(app):
+    from datetime import datetime
+    from user_manager import is_device_trusted
+    u = _active_user("legacy_dev", "+919812345691")
+    u.known_devices = [{"device_id": "old-dev", "last_verified_at": datetime.utcnow().isoformat()}]
+    assert is_device_trusted(u, "old-dev") is True
+
+
+def test_forgot_payment_pin_resets_only_the_payment_pin(client, app, sender):
+    """A user who forgot the PAYMENT PIN can reset it (codes + security answer); login PIN is untouched."""
+    u = _active_user("pay_reset", "+919812345692")
+    u.login_pin_hash = hash_pin("918273")   # a strong login PIN (121212 is rejected as weak before "must differ")
+    db.session.commit()
+    jwt0 = create_access_token(identity="pay_reset")
+    hdr = lambda t: {"Authorization": f"Bearer {t}"}  # noqa: E731
+    # old payment PIN works for the secured balance check, the login PIN does not (they are different secrets)
+    assert client.post("/api/user/balance-secured", headers=hdr(jwt0), json={"pin": "654321"}).status_code == 200
+    assert client.post("/api/user/balance-secured", headers=hdr(jwt0), json={"pin": "918273"}).status_code == 401
+
+    client.post("/api/pin/forgot/start", json={"user_id": "pay_reset"})
+    v = client.post("/api/pin/forgot/verify", json={
+        "user_id": "pay_reset", "email_code": sender.code("pay_reset", "EMAIL"),
+        "telegram_code": sender.code("pay_reset", "TELEGRAM")})
+    # wrong security answer is refused
+    bad = client.post("/api/pin/forgot/reset", json={"reset_token": v.get_json()["reset_token"], "security_answer": "wrong",
+                                                    "new_pin": "582914", "pin_type": "payment", "device_id": "d"})
+    assert bad.status_code == 400
+    # a new payment PIN equal to the login PIN is refused
+    same = client.post("/api/pin/forgot/reset", json={"reset_token": v.get_json()["reset_token"], "security_answer": "pune",
+                                                     "new_pin": "918273", "pin_type": "payment", "device_id": "d"})
+    assert same.status_code == 400 and "differ" in same.get_json()["message"].lower()
+    ok = client.post("/api/pin/forgot/reset", json={"reset_token": v.get_json()["reset_token"], "security_answer": "pune",
+                                                   "new_pin": "582914", "pin_type": "payment", "device_id": "d"})
+    assert ok.status_code == 200 and ok.get_json()["user_id"] == "pay_reset"
+    tok = ok.get_json()["access_token"]
+    assert client.post("/api/user/balance-secured", headers=hdr(tok), json={"pin": "582914"}).status_code == 200
+    assert client.post("/api/user/balance-secured", headers=hdr(tok), json={"pin": "654321"}).status_code == 401
+    # login PIN still works
+    assert client.post("/api/login", json={"user_id": "pay_reset", "login_pin": "918273", "device_id": "d"}).get_json()["status"] == "LOGGED_IN"
+
+
+def test_wrong_payment_pins_do_not_lock_login(client, app):
+    """Wrong tries on the payment keypad (balance check) must count against the PAYMENT lockout, not login."""
+    _active_user("lock_split", "+919812345693")
+    jwt = create_access_token(identity="lock_split")
+    for _ in range(4):
+        client.post("/api/user/balance-secured", headers={"Authorization": f"Bearer {jwt}"}, json={"pin": "000111"})
+    u = User.query.filter_by(user_id="lock_split").first()
+    db.session.refresh(u)
+    assert (u.login_failed_attempts or 0) == 0 and not u.login_locked_until
+    assert client.post("/api/login", json={"user_id": "lock_split", "login_pin": "121212", "device_id": "x"}).status_code == 200
+
+
+def test_forgot_payment_pin_entry_points_exist():
+    base = os.path.join(os.path.dirname(__file__), "..", "dashboard", "templates")
+    dash = open(os.path.join(base, "user_dashboard.html"), encoding="utf-8").read()
+    login = open(os.path.join(base, "user_login.html"), encoding="utf-8").read()
+    assert 'id="forgot-payment-modal"' in dash and dash.count("openForgotPaymentPin()") >= 2  # keypad + settings
+    assert 'id="forgot-pin-type"' in login and "pin_type: (document.getElementById('forgot-pin-type')" in login

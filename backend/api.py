@@ -1272,7 +1272,10 @@ def pin_forgot_reset():
     # 2. Clear known devices except the current one
     current_device_id = request.headers.get("X-Device-ID") or data.get("device_id")
     if current_device_id:
-        user.known_devices = [{"device_id": current_device_id, "last_verified_at": now.isoformat()}]
+        # Same shape as user_manager.bind_device(); a different key ("last_verified_at") meant the
+        # device the user had just verified on was never trusted at the next login.
+        user.known_devices = [{"device_id": current_device_id, "added_at": now.isoformat(),
+                               "last_verified": now.isoformat()}]
     else:
         user.known_devices = []
 
@@ -1325,7 +1328,11 @@ def pin_forgot_reset():
         "success": True,
         "message": f"{pin_type.capitalize()} PIN reset successfully. Reduced limit mode active for 24 hours.",
         "access_token": access_token,
-        "refresh_token": refresh_token
+        "refresh_token": refresh_token,
+        # The web app stores these to know who is signed in (login and signup return them too).
+        # Without user_id the dashboard treated the fresh session as logged out -> redirect loop.
+        "user_id": user.user_id,
+        "upi_id": user.get_decrypted_upi_id()
     }), 200
 
 
@@ -2217,15 +2224,18 @@ def get_balance_secured():
     if not pin:
         return jsonify({"success": False, "message": "UPI PIN is required."}), 400
         
-    from user_manager import authenticate_user
-    pin_ok, pin_msg = authenticate_user(uid, pin)
-    if not pin_ok:
-        return jsonify({"success": False, "message": "Invalid UPI PIN: " + pin_msg}), 401
-        
     user = User.query.filter_by(user_id=uid).first()
     if not user:
         return jsonify({"success": False, "message": "User not found."}), 404
-        
+
+    # The balance check uses the PAYMENT PIN keypad. It used to validate the LOGIN PIN and to count
+    # wrong tries toward the login lockout, so a correct payment PIN failed and could lock login.
+    from user_manager import verify_user_payment_pin
+    pin_ok, pin_msg = verify_user_payment_pin(user, str(pin))
+    if not pin_ok:
+        status_code = 403 if "locked" in pin_msg.lower() else 401
+        return jsonify({"success": False, "message": "Invalid UPI PIN: " + pin_msg}), status_code
+
     return jsonify({"success": True, "balance": float(user.balance)}), 200
 
 @api_bp.route('/user/settings', methods=['GET', 'POST'])

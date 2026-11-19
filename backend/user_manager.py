@@ -482,7 +482,8 @@ def is_device_trusted(user: User, device_id: str, max_age_days: int = 30) -> boo
     for item in devices:
         if isinstance(item, dict):
             if item.get("device_id") == device_id:
-                last_verified_str = item.get("last_verified") or item.get("added_at")
+                # "last_verified_at" is the key older PIN resets wrote; keep accepting it for those accounts.
+                last_verified_str = item.get("last_verified") or item.get("last_verified_at") or item.get("added_at")
                 if not last_verified_str:
                     return False
                 try:

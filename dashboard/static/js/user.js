@@ -1046,7 +1046,8 @@ async function checkDomainReputation(e) {
     if (!domain) return;
 
     try {
-        const res = await fetch(`/api/website-check/${domain}`, {
+        // encode: free text such as "my name" must not break the URL path
+        const res = await fetch(`/api/website-check/${encodeURIComponent(domain)}`, {
             headers: { 'Authorization': `Bearer ${userToken}` }
         });
         const data = await res.json();
@@ -1067,16 +1068,23 @@ function displayDomainResult(data) {
     if (!card) return;
 
     if (nameEl) nameEl.innerText = data.domain;
+    // Verdicts from the API: TRUSTED, SAFE, CAUTION, SUSPICIOUS, FRAUD, INVALID, UNKNOWN.
+    // (Before, anything except SAFE/SUSPICIOUS was painted red "blocked", even TRUSTED.)
+    const tone = { TRUSTED: 'approved', SAFE: 'approved', CAUTION: 'warning', SUSPICIOUS: 'warning',
+                   INVALID: 'warning', UNKNOWN: 'warning', FRAUD: 'blocked' }[data.verdict] || 'warning';
+    const toneColor = { approved: 'var(--color-success)', warning: 'var(--color-warning)', blocked: 'var(--color-danger)' }[tone];
     if (verdictEl) {
         verdictEl.innerText = data.verdict;
-        verdictEl.className = `verdict-tag ${data.verdict === 'SAFE' ? 'approved' : data.verdict === 'SUSPICIOUS' ? 'warning' : 'blocked'}`;
+        verdictEl.className = `verdict-tag ${tone}`;
     }
-    const scoreColor = data.verdict === 'SAFE' ? 'var(--color-success)' : data.verdict === 'SUSPICIOUS' ? 'var(--color-warning)' : 'var(--color-danger)';
-    if (scoreFill) { scoreFill.style.backgroundColor = scoreColor; scoreFill.style.width = `${data.trust_score}%`; }
-    if (scoreEl) scoreEl.innerText = `${data.trust_score.toFixed(0)}/100`;
+    // The number is a RISK score (0 = no known threat, 100 = dangerous), not a trust score.
+    const risk = Number(data.trust_score) || 0;
+    if (scoreFill) { scoreFill.style.backgroundColor = toneColor; scoreFill.style.width = `${Math.min(100, Math.max(0, risk))}%`; }
+    if (scoreEl) scoreEl.innerText = `${risk.toFixed(0)}/100`;
     if (reasonsList) {
         reasonsList.innerHTML = '';
         (data.reasons || []).forEach(r => { reasonsList.innerHTML += `<li>${esc(r)}</li>`; });
+        if (data.note) reasonsList.innerHTML += `<li style="opacity:.8"><em>${esc(data.note)}</em></li>`;
     }
     card.style.display = 'block';
 }
@@ -1608,4 +1616,151 @@ async function handleResetBalance() {
             showToast('Network error resetting balance.', 'error');
         }
     });
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// FORGOT PAYMENT PIN (works while logged in; email + Telegram codes + security answer)
+// Uses /api/pin/forgot/start | verify | reset with pin_type "payment".
+// ─────────────────────────────────────────────────────────────
+let fppResetToken = '';
+const FPP_LABELS = { 'fpp-btn-1': 'Send codes', 'fpp-btn-2': 'Verify codes', 'fpp-btn-3': 'Set new PIN' };
+
+function fppShowError(msg) {
+    const box = document.getElementById('fpp-error');
+    document.getElementById('fpp-error-msg').innerText = msg;
+    box.style.display = 'flex';
+}
+
+function fppSetBusy(id, busy) {
+    const b = document.getElementById(id);
+    if (!b) return;
+    b.disabled = busy;
+    b.innerText = busy ? 'Please wait…' : FPP_LABELS[id];
+}
+
+function fppResetState() {
+    fppResetToken = '';
+    ['fpp-email-code', 'fpp-telegram-code', 'fpp-answer', 'fpp-new-pin', 'fpp-confirm-pin'].forEach(id => {
+        const i = document.getElementById(id);
+        if (i) i.value = '';
+    });
+    Object.keys(FPP_LABELS).forEach(id => fppSetBusy(id, false));
+    document.getElementById('fpp-error').style.display = 'none';
+    const d = document.getElementById('fpp-delivery');
+    d.textContent = '';
+    d.style.display = 'none';
+    document.getElementById('fpp-step-1').style.display = 'block';
+    document.getElementById('fpp-step-2').style.display = 'none';
+    document.getElementById('fpp-step-3').style.display = 'none';
+}
+
+function openForgotPaymentPin(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (typeof closeUpiPinModal === 'function') closeUpiPinModal();   // leave the keypad if it was open
+    fppResetState();
+    document.getElementById('forgot-payment-modal').style.display = 'flex';
+}
+
+function closeForgotPaymentPin() {
+    document.getElementById('forgot-payment-modal').style.display = 'none';
+    fppResetState();
+}
+
+async function fppSendCodes() {
+    document.getElementById('fpp-error').style.display = 'none';
+    fppSetBusy('fpp-btn-1', true);
+    try {
+        const res = await fetch('/api/pin/forgot/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.success === false) {
+            fppShowError(data.message || 'Could not send the codes. Please try again.');
+            fppSetBusy('fpp-btn-1', false);
+            return;
+        }
+        document.getElementById('fpp-step-1').style.display = 'none';
+        document.getElementById('fpp-step-2').style.display = 'block';
+        if (window.MLBFDOtp && data.delivery) {
+            MLBFDOtp.render(document.getElementById('fpp-delivery'), data.delivery, { purpose: 'PIN_RESET', userId: userId });
+        }
+        document.getElementById('fpp-email-code').focus();
+    } catch (err) {
+        fppShowError('Network error. Please try again.');
+        fppSetBusy('fpp-btn-1', false);
+    }
+}
+
+async function fppVerifyCodes(e) {
+    e.preventDefault();
+    document.getElementById('fpp-error').style.display = 'none';
+    const emailCode = document.getElementById('fpp-email-code').value.trim();
+    const telegramCode = document.getElementById('fpp-telegram-code').value.trim();
+    if (!/^\d{6}$/.test(emailCode) || !/^\d{6}$/.test(telegramCode)) {
+        fppShowError('Enter both 6-digit codes (email and Telegram).');
+        return;
+    }
+    fppSetBusy('fpp-btn-2', true);
+    try {
+        const res = await fetch('/api/pin/forgot/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, email_code: emailCode, telegram_code: telegramCode })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success) {
+            fppResetToken = data.reset_token;
+            document.getElementById('fpp-question').innerText = data.security_question || 'Security question';
+            document.getElementById('fpp-step-2').style.display = 'none';
+            document.getElementById('fpp-step-3').style.display = 'block';
+            document.getElementById('fpp-answer').focus();
+        } else {
+            fppShowError(data.message || 'Invalid or expired codes.');
+        }
+    } catch (err) {
+        fppShowError('Network error. Please try again.');
+    }
+    fppSetBusy('fpp-btn-2', false);
+}
+
+async function fppResetPin(e) {
+    e.preventDefault();
+    document.getElementById('fpp-error').style.display = 'none';
+    const answer = document.getElementById('fpp-answer').value.trim();
+    const newPin = document.getElementById('fpp-new-pin').value.trim();
+    const confirmPin = document.getElementById('fpp-confirm-pin').value.trim();
+    if (!answer) { fppShowError('Please answer your security question.'); return; }
+    if (!/^\d{6}$/.test(newPin)) { fppShowError('The PIN must be exactly 6 digits.'); return; }
+    if (newPin !== confirmPin) { fppShowError('The two PIN entries do not match.'); return; }
+    fppSetBusy('fpp-btn-3', true);
+    let deviceId = localStorage.getItem('mlbfd_device_id') || '';
+    try {
+        const res = await fetch('/api/pin/forgot/reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Device-ID': deviceId },
+            body: JSON.stringify({ reset_token: fppResetToken, security_answer: answer, new_pin: newPin,
+                                   pin_type: 'payment', device_id: deviceId })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success) {
+            // A reset signs every session out on the server; keep THIS one alive with the fresh tokens.
+            if (data.access_token) {
+                localStorage.setItem('mlbfd_token', data.access_token);
+                userToken = data.access_token;
+            }
+            if (data.refresh_token) localStorage.setItem('mlbfd_refresh_token', data.refresh_token);
+            if (data.user_id) { localStorage.setItem('mlbfd_user_id', data.user_id); userId = data.user_id; }
+            closeForgotPaymentPin();
+            showToast('Payment PIN changed. Payments are limited to Rs 10,000 per transaction for the next 24 hours.', 'success', 7000);
+        } else {
+            fppShowError(data.message || 'Could not reset the PIN.');
+            fppSetBusy('fpp-btn-3', false);
+        }
+    } catch (err) {
+        fppShowError('Network error. Please try again.');
+        fppSetBusy('fpp-btn-3', false);
+    }
 }

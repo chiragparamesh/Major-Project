@@ -208,6 +208,13 @@
                     <input type="text" id="forgot-sec-answer" required placeholder="Your answer (case-insensitive)" style="width: 100%; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">
                 </div>
                 <div class="form-group">
+                    <label for="forgot-pin-type">Which PIN do you want to reset?</label>
+                    <select id="forgot-pin-type" style="width: 100%; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">
+                        <option value="login" style="color:#000">Login PIN (used to sign in)</option>
+                        <option value="payment" style="color:#000">Payment PIN (used to confirm payments)</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label for="forgot-new-pin">New 6-Digit PIN</label>
                     <input type="password" id="forgot-new-pin" required maxlength="6" pattern="\d{6}" placeholder="••••••" style="width: 100%; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">
                 </div>
@@ -236,9 +243,20 @@
         }
 
         // Auto-refresh session on reopen using refresh token
+        function clearStaleSession() {
+            ['mlbfd_token', 'mlbfd_refresh_token', 'mlbfd_user_id', 'mlbfd_upi_id', 'token', 'refresh_token', 'user_upi']
+                .forEach(k => localStorage.removeItem(k));
+        }
+
         async function tryAutoRefresh() {
             const refreshToken = localStorage.getItem('mlbfd_refresh_token');
             if (!refreshToken) return;
+            // A session without a user ID cannot open the dashboard (it would bounce straight back
+            // here and loop forever). Drop the incomplete session and show the normal login form.
+            if (!localStorage.getItem('mlbfd_user_id')) {
+                clearStaleSession();
+                return;
+            }
 
             try {
                 const res = await fetch('/api/refresh', {
@@ -253,6 +271,8 @@
                         localStorage.setItem('mlbfd_token', data.access_token);
                         window.location.href = '/dashboard';
                     }
+                } else {
+                    clearStaleSession();  // refresh token expired/revoked: do not keep retrying with it
                 }
             } catch (e) {
                 console.log("Auto-refresh skipped:", e);
@@ -397,8 +417,26 @@
         let forgotUserId = "";
         let forgotResetToken = "";
 
+        // Remember each button's original label so a reopened dialog is never stuck on "Sending..."/"Verifying...".
+        const FORGOT_BUTTONS = ['forgot-btn-1', 'forgot-btn-2', 'forgot-btn-3'];
+        FORGOT_BUTTONS.forEach(id => { const b = document.getElementById(id); if (b) b.dataset.orig = b.innerHTML; });
+
+        function resetForgotDialog() {
+            FORGOT_BUTTONS.forEach(id => {
+                const b = document.getElementById(id);
+                if (b) { b.disabled = false; if (b.dataset.orig) b.innerHTML = b.dataset.orig; }
+            });
+            ['forgot-identifier', 'forgot-email-otp', 'forgot-telegram-otp', 'forgot-sec-answer', 'forgot-new-pin', 'forgot-confirm-pin']
+                .forEach(id => { const i = document.getElementById(id); if (i) i.value = ''; });
+            const d = document.getElementById('forgot-delivery');
+            if (d) { d.textContent = ''; d.style.display = 'none'; }
+            forgotUserId = '';
+            forgotResetToken = '';
+        }
+
         function openForgotPinModal(e) {
             if (e) e.preventDefault();
+            resetForgotDialog();
             document.getElementById('forgot-pin-modal').style.display = 'flex';
             document.getElementById('forgot-step-1').style.display = 'block';
             document.getElementById('forgot-step-2').style.display = 'none';
@@ -532,7 +570,7 @@
                         reset_token: forgotResetToken,
                         security_answer: secAnswer,
                         new_pin: newPin,
-                        pin_type: 'login',
+                        pin_type: (document.getElementById('forgot-pin-type') || {}).value || 'login',
                         device_id: device_id
                     })
                 });
@@ -541,6 +579,9 @@
                     if (data.access_token) {
                         localStorage.setItem('mlbfd_token', data.access_token);
                         localStorage.setItem('mlbfd_refresh_token', data.refresh_token);
+                        // The dashboard needs the user ID; fall back to the one typed in step 1.
+                        localStorage.setItem('mlbfd_user_id', data.user_id || forgotUserId);
+                        if (data.upi_id) localStorage.setItem('mlbfd_upi_id', data.upi_id);
                     }
                     successMsg.innerText = data.message || "PIN reset successfully! Redirecting to dashboard...";
                     successDiv.style.display = 'flex';

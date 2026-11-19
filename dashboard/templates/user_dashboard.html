@@ -23,6 +23,10 @@
             var token = localStorage.getItem('mlbfd_token') || localStorage.getItem('token');
             var userId = localStorage.getItem('mlbfd_user_id');
             if (!token || !userId) {
+                // Clear leftovers first: an incomplete session left behind made the login page
+                // auto-sign-in and bounce back here forever (endless redirect loop).
+                ['mlbfd_token', 'mlbfd_refresh_token', 'mlbfd_user_id', 'mlbfd_upi_id', 'token', 'refresh_token', 'user_upi']
+                    .forEach(function (k) { localStorage.removeItem(k); });
                 window.location.replace('/user/login');
             }
         })();
@@ -626,7 +630,7 @@
                                 </div>
                                 <div class="result-gauge-group">
                                     <div class="result-gauge-bar"><div class="result-gauge-fill" id="result-domain-score-fill"></div></div>
-                                    <span class="result-score-text">Trust Score: <strong id="result-domain-score">100/100</strong></span>
+                                    <span class="result-score-text">Risk Score (0 = no known threat, 100 = dangerous): <strong id="result-domain-score">0/100</strong></span>
                                 </div>
                                 <ul class="result-reasons-list" id="result-domain-reasons">
                                     <li>SSL Certificate is valid</li>
@@ -717,6 +721,12 @@
                             <div class="alert alert-success" id="change-pin-success" style="display: none; margin-bottom: 16px;">
                                 <i class="fa-solid fa-circle-check"></i>
                                 <span id="change-pin-success-msg">PIN updated successfully!</span>
+                            </div>
+
+                            <div style="margin-bottom: 14px; padding: 10px 12px; border: 1px dashed var(--border-color, #2b224e); border-radius: 8px; font-size: 12px;">
+                                <i class="fa-solid fa-circle-question"></i> Forgot your payment PIN?
+                                <button type="button" class="btn btn-secondary" style="margin-left: 8px; padding: 4px 12px;" onclick="openForgotPaymentPin()">Reset payment PIN</button>
+                                <div style="margin-top: 6px; color: var(--text-muted);">Needs the codes sent to your email and Telegram, plus your security answer. You do not need the old PIN.</div>
                             </div>
 
                             <form id="change-pin-form" onsubmit="handlePinChangeInitiate(event)">
@@ -888,7 +898,73 @@
                 <button class="keypad-btn submit-btn" onclick="submitPinKey()"><i class="fa-solid fa-circle-check"></i></button>
             </div>
             
+            <button class="btn-cancel-pin" style="margin-bottom: 6px; text-decoration: underline;" onclick="openForgotPaymentPin()">Forgot payment PIN?</button>
             <button class="btn-cancel-pin" onclick="closeUpiPinModal()">Cancel Transaction</button>
+        </div>
+    </div>
+
+    <!-- Forgot Payment PIN (3 steps: codes sent -> verify codes -> security answer + new PIN) -->
+    <div class="modal-overlay" id="forgot-payment-modal" style="display: none;">
+        <div class="modal-card animate-zoom-in">
+            <div class="modal-header">
+                <i class="fa-solid fa-key modal-icon"></i>
+                <h3>Reset Payment PIN</h3>
+                <p id="fpp-subtitle">We will send one code to your <strong>Email</strong> and one to your <strong>Telegram</strong>. You need both.</p>
+            </div>
+
+            <div class="alert alert-danger" id="fpp-error" style="display: none; margin-bottom: 14px;">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <span id="fpp-error-msg">Error</span>
+            </div>
+
+            <!-- Step 1: send codes -->
+            <div id="fpp-step-1">
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">
+                    For your safety, a reset limits payments to Rs 10,000 per transaction and Rs 25,000 per day for 24 hours.
+                </p>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="btn btn-secondary" style="justify-content:center; width:50%;" onclick="closeForgotPaymentPin()">Cancel</button>
+                    <button type="button" class="btn btn-primary" style="justify-content:center; width:50%;" id="fpp-btn-1" onclick="fppSendCodes()">Send codes</button>
+                </div>
+            </div>
+
+            <!-- Step 2: verify codes -->
+            <form id="fpp-step-2" style="display: none;" onsubmit="fppVerifyCodes(event)">
+                <div id="fpp-delivery" style="display:none; margin-bottom: 10px; text-align: left;"></div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label for="fpp-email-code"><i class="fa-solid fa-envelope" style="margin-right:6px;"></i> Email code (6 digits)</label>
+                    <div class="input-wrapper text-center"><input type="text" id="fpp-email-code" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" style="text-align:center; letter-spacing:6px;"></div>
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label for="fpp-telegram-code"><i class="fa-brands fa-telegram" style="margin-right:6px;"></i> Telegram code (6 digits)</label>
+                    <div class="input-wrapper text-center"><input type="text" id="fpp-telegram-code" maxlength="6" inputmode="numeric" placeholder="000000" style="text-align:center; letter-spacing:6px;"></div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="btn btn-secondary" style="justify-content:center; width:50%;" onclick="closeForgotPaymentPin()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="justify-content:center; width:50%;" id="fpp-btn-2">Verify codes</button>
+                </div>
+            </form>
+
+            <!-- Step 3: security answer + new PIN -->
+            <form id="fpp-step-3" style="display: none;" onsubmit="fppResetPin(event)">
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label id="fpp-question">Security question</label>
+                    <div class="input-wrapper"><input type="text" id="fpp-answer" autocomplete="off" placeholder="Your answer (not case-sensitive)"></div>
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label for="fpp-new-pin">New payment PIN (6 digits)</label>
+                    <div class="input-wrapper"><input type="password" id="fpp-new-pin" maxlength="6" inputmode="numeric" autocomplete="new-password" placeholder="••••••"></div>
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label for="fpp-confirm-pin">Confirm new payment PIN</label>
+                    <div class="input-wrapper"><input type="password" id="fpp-confirm-pin" maxlength="6" inputmode="numeric" autocomplete="new-password" placeholder="••••••"></div>
+                </div>
+                <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">It must be different from your login PIN and not an easy pattern like 123456 or 111111.</p>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="btn btn-secondary" style="justify-content:center; width:50%;" onclick="closeForgotPaymentPin()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="justify-content:center; width:50%;" id="fpp-btn-3">Set new PIN</button>
+                </div>
+            </form>
         </div>
     </div>
 
