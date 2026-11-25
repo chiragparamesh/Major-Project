@@ -1286,10 +1286,31 @@ function generateReceiveQr() {
 function copyUpiQrLink() {
     const linkText = document.getElementById('receive-qr-link-text')?.innerText;
     if (!linkText) return;
-    navigator.clipboard.writeText(linkText).then(() => {
+    copyTextToClipboard(linkText).then(() => {
         showToast('UPI payment link copied to clipboard!', 'success');
     }).catch(() => {
         showToast('Failed to copy. Please copy manually.', 'warning');
+    });
+}
+
+// navigator.clipboard exists only on HTTPS or localhost. On http://<laptop-ip>:5000 (phones on the
+// same Wi-Fi) it is undefined, so fall back to the older selection + execCommand('copy') method.
+function copyTextToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(text);
+    }
+    return new Promise((resolve, reject) => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        ok ? resolve() : reject(new Error('copy not supported'));
     });
 }
 

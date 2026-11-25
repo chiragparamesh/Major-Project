@@ -445,3 +445,11 @@ def test_forgot_payment_pin_entry_points_exist():
     login = open(os.path.join(base, "user_login.html"), encoding="utf-8").read()
     assert 'id="forgot-payment-modal"' in dash and dash.count("openForgotPaymentPin()") >= 2  # keypad + settings
     assert 'id="forgot-pin-type"' in login and "pin_type: (document.getElementById('forgot-pin-type')" in login
+
+
+def test_clipboard_copy_works_on_plain_http_lan_origin():
+    """navigator.clipboard is undefined on http://<laptop-ip>:5000, so the copy button needs a fallback."""
+    js = open(os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "js", "user.js"), encoding="utf-8").read()
+    assert "function copyTextToClipboard" in js and "execCommand('copy')" in js
+    body = js[js.index("function copyUpiQrLink"):js.index("function parseUpiQrLink")]
+    assert "navigator.clipboard.writeText(linkText)" not in body  # direct call would throw on LAN http

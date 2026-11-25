@@ -12,6 +12,12 @@ Risky payments are held until the user enters **two codes: email and Telegram**.
 - Web user portal, admin portal, and two Flutter apps (Sender, Receiver)
 - Free to run: Flask + SQLite + Waitress, optional Cloudflare tunnel or same-network sharing
 
+## Android phone app (download)
+Phones on the same Wi-Fi/hotspot as the laptop that runs the server can use the **MLBFD Android app**:
+download `mlbfd-app.apk` from the [Releases page](https://github.com/chiragparamesh/Major-Project/releases/latest),
+install it, and enter the laptop address shown by `start_mlbfd.bat` (the "SHARE ON SAME WI-FI" line).
+Full steps and troubleshooting: [README_PHONE_APP.md](README_PHONE_APP.md).
+
 ## Documentation
 - **Complete details (PDF):** `docs/MLBFD_Complete_Project_Details.pdf`
 - Setup for email and Telegram: `OTP_SETUP.md` · Hosting: `README_HOSTING.md` · Same-network use: `README_LAN.md` · Mobile apps: `README_APK.md`

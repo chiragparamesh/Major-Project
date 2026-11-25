@@ -34,3 +34,6 @@ One laptop (the "server") runs MLBFD. The other 3 open it in a browser. No cloud
 - Need HTTPS or access from other networks (free): `winget install --id Cloudflare.cloudflared`, then `start_mlbfd.bat`
   prints a public `https://....trycloudflare.com` link. Admin stays local-only unless `ADMIN_API_TOKEN` is used.
 - After any `.env` change, stop and restart the server.
+
+## Phones
+Phones can use the Android app instead of a browser: see **README_PHONE_APP.md** (download the APK from the GitHub releases page, enter the laptop address, done).

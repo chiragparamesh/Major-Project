@@ -45,3 +45,6 @@ backend/bin/
 # Service-account keys (never commit)
 secrets/
 *firebase-adminsdk*.json
+
+# Generated export (can contain transaction data)
+backend/npci_fraud_report.csv
