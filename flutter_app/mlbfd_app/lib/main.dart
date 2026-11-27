@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -238,6 +240,7 @@ class _WebScreenState extends State<WebScreen> {
     super.initState();
     _web = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel('MLBFDApp', onMessageReceived: (m) => _onBridgeMessage(m.message))
       ..setBackgroundColor(_bg)
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: _onNavigation,
@@ -274,6 +277,24 @@ class _WebScreenState extends State<WebScreen> {
       return NavigationDecision.prevent;
     }
     return NavigationDecision.navigate; // sub-frames (embedded widgets)
+  }
+
+  /// Web page -> app. The page cannot use camera/GPS itself (plain-http origin), so it asks the app.
+  Future<void> _onBridgeMessage(String raw) async {
+    String type = '';
+    try {
+      type = (jsonDecode(raw) as Map)['type']?.toString() ?? '';
+    } catch (_) {}
+    if (type == 'get_location') {
+      final res = await getDeviceLocation();
+      await _web.runJavaScript('window.mlbfdNative && window.mlbfdNative.onLocation(${jsonEncode(res)});');
+    } else if (type == 'scan_qr') {
+      if (!mounted) return;
+      final code = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const QrScanScreen()));
+      if (code != null && code.isNotEmpty) {
+        await _web.runJavaScript('window.mlbfdNative && window.mlbfdNative.onQr(${jsonEncode(code)});');
+      }
+    }
   }
 
   Future<void> _onBack() async {
@@ -368,6 +389,108 @@ class _ErrorPanel extends StatelessWidget {
           FilledButton(onPressed: onRetry, style: FilledButton.styleFrom(backgroundColor: _brand), child: const Text('Try again')),
           const SizedBox(height: 8),
           OutlinedButton(onPressed: onChangeServer, child: const Text('Change server')),
+        ],
+      ),
+    );
+  }
+}
+
+/// Current phone location as {ok, lat, lon, accuracy} or {ok:false, error}. Asks for permission when needed.
+Future<Map<String, dynamic>> getDeviceLocation() async {
+  try {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      return {'ok': false, 'error': 'Location is switched off on this phone. Turn on Location in the quick settings and tap Detect.'};
+    }
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+    if (perm == LocationPermission.denied) {
+      return {'ok': false, 'error': 'Location permission was denied. Allow it and tap Detect.'};
+    }
+    if (perm == LocationPermission.deniedForever) {
+      return {'ok': false, 'error': 'Location permission is blocked. Phone Settings > Apps > MLBFD > Permissions > Location.'};
+    }
+    Position pos;
+    try {
+      pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 15)),
+      );
+    } on TimeoutException {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last == null) return {'ok': false, 'error': 'Could not get a GPS fix. Move near a window or outside and tap Detect.'};
+      pos = last;
+    }
+    return {'ok': true, 'lat': pos.latitude, 'lon': pos.longitude, 'accuracy': pos.accuracy};
+  } catch (e) {
+    return {'ok': false, 'error': 'Could not read the location: $e'};
+  }
+}
+
+/// Full-screen camera that returns the first QR code it reads.
+class QrScanScreen extends StatefulWidget {
+  const QrScanScreen({super.key});
+
+  @override
+  State<QrScanScreen> createState() => _QrScanScreenState();
+}
+
+class _QrScanScreenState extends State<QrScanScreen> {
+  final MobileScannerController _controller =
+      MobileScannerController(formats: const [BarcodeFormat.qrCode], detectionSpeed: DetectionSpeed.noDuplicates);
+  bool _done = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onDetect(BarcodeCapture capture) {
+    if (_done) return;
+    for (final b in capture.barcodes) {
+      final v = b.rawValue;
+      if (v != null && v.isNotEmpty) {
+        _done = true;
+        Navigator.of(context).pop(v);
+        return;
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Scan receiver's QR"), backgroundColor: _bg),
+      body: Stack(
+        children: [
+          MobileScanner(
+            controller: _controller,
+            onDetect: _onDetect,
+            errorBuilder: (context, error) => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  error.errorCode == MobileScannerErrorCode.permissionDenied
+                      ? 'Camera permission is needed to scan. Allow it in Phone Settings > Apps > MLBFD > Permissions.'
+                      : 'Camera error: ${error.errorDetails?.message ?? error.errorCode.name}',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          ),
+          Center(
+            child: Container(
+              width: 250,
+              height: 250,
+              decoration: BoxDecoration(border: Border.all(color: _brand, width: 3), borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+          const Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('Point the camera at a UPI payment QR code', style: TextStyle(color: Colors.white, fontSize: 15)),
+            ),
+          ),
         ],
       ),
     );

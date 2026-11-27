@@ -2088,7 +2088,8 @@ def verify_otp_endpoint():
 def website_check(domain):
     from website_trust import WebsiteTrustScore
     wts_checker = WebsiteTrustScore()
-    score, verdict, reasons = wts_checker.check(domain)
+    # deep=True: open the site like a phone browser (redirects, parked pages, adult/dating content)
+    score, verdict, reasons = wts_checker.check(domain, deep=True)
     resp = {
         "success": True,
         "domain": domain,

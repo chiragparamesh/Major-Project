@@ -208,30 +208,10 @@ window.onload = function () {
         });
     }
 
-    // GPS capture for transaction location embedding (Part 16)
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            async (pos) => {
-                currentCoords.lat = pos.coords.latitude;
-                currentCoords.lon = pos.coords.longitude;
-                currentCoords.accuracy_m = Math.round(pos.coords.accuracy);
-                currentCoords.source = 'gps';
-                try {
-                    const res = await fetch(`/api/reverse_geocode?lat=${currentCoords.lat}&lon=${currentCoords.lon}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        currentCoords.area_name = data.area_name || 'Bengaluru';
-                    }
-                } catch (e) {}
-                updateLocationCardUI();
-            },
-            () => {
-                currentCoords.source = 'default';
-                updateLocationCardUI();
-            },
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-        );
-    }
+    // Location for the transaction (Part 16): native GPS inside the Android app, browser GPS elsewhere.
+    detectLocation(false);
+    const scanBtn = document.getElementById('btn-scan-qr');
+    if (scanBtn && IN_APP) scanBtn.style.display = 'flex';
 
     refreshDashboardData();
     setInterval(refreshDashboardData, 15000);
@@ -1523,9 +1503,9 @@ let mapMarker = null;
 function updateLocationCardUI() {
     const areaEl = document.getElementById('loc-area-display');
     const accEl = document.getElementById('loc-accuracy-display');
-    if (areaEl) areaEl.innerText = currentCoords.area_name || 'Bengaluru';
+    if (areaEl) areaEl.innerText = currentCoords.source === 'default' ? 'Location not detected' : (currentCoords.area_name || 'Unknown area');
     if (accEl) {
-        const srcText = currentCoords.source === 'manual_pin' ? 'Manual Pin' : (currentCoords.source === 'gps' ? 'GPS' : 'Default');
+        const srcText = currentCoords.source === 'manual_pin' ? 'Manual Pin' : (currentCoords.source === 'gps' ? 'GPS' : 'Default (not detected: tap Detect)');
         accEl.innerText = `Source: ${srcText} (Accuracy: ~${currentCoords.accuracy_m}m)`;
     }
 }
@@ -1783,5 +1763,100 @@ async function fppResetPin(e) {
     } catch (err) {
         fppShowError('Network error. Please try again.');
         fppSetBusy('fpp-btn-3', false);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// NATIVE APP BRIDGE (MLBFD Android app)
+// Inside the app's web view the browser's own camera/location are blocked on http://<laptop-ip>:5000
+// (not a secure origin), so the app provides them natively through window.MLBFDApp and calls back
+// into window.mlbfdNative.*. In a normal browser everything falls back to standard web APIs.
+// ─────────────────────────────────────────────────────────────
+const IN_APP = typeof window.MLBFDApp !== 'undefined';
+const _pendingLocation = [];
+
+window.mlbfdNative = {
+    onLocation(res) {
+        const resolve = _pendingLocation.shift();
+        if (resolve) resolve(res || { ok: false, error: 'No location returned' });
+    },
+    onQr(text) { handleScannedQr(text); }
+};
+
+function appRequestLocation() {
+    return new Promise((resolve) => {
+        _pendingLocation.push(resolve);
+        try {
+            window.MLBFDApp.postMessage(JSON.stringify({ type: 'get_location' }));
+        } catch (e) {
+            _pendingLocation.pop();
+            resolve({ ok: false, error: 'App bridge unavailable' });
+            return;
+        }
+        setTimeout(() => {
+            const i = _pendingLocation.indexOf(resolve);
+            if (i >= 0) { _pendingLocation.splice(i, 1); resolve({ ok: false, error: 'Timed out waiting for the phone location' }); }
+        }, 30000);
+    });
+}
+
+function browserRequestLocation() {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) { resolve({ ok: false, error: 'Location is not available in this browser' }); return; }
+        navigator.geolocation.getCurrentPosition(
+            (p) => resolve({ ok: true, lat: p.coords.latitude, lon: p.coords.longitude, accuracy: p.coords.accuracy }),
+            (e) => resolve({ ok: false, error: e && e.message ? e.message : 'Location permission denied' }),
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    });
+}
+
+async function detectLocation(userClicked) {
+    const areaEl = document.getElementById('loc-area-display');
+    if (areaEl) areaEl.innerText = 'Detecting area...';
+    const res = IN_APP ? await appRequestLocation() : await browserRequestLocation();
+    if (res && res.ok) {
+        currentCoords.lat = res.lat;
+        currentCoords.lon = res.lon;
+        currentCoords.accuracy_m = Math.round(res.accuracy || 50);
+        currentCoords.source = 'gps';
+        currentCoords.area_name = await fetchAreaName(res.lat, res.lon);
+        updateLocationCardUI();
+        if (userClicked) showToast('Location updated', 'success');
+    } else {
+        currentCoords.source = 'default';
+        updateLocationCardUI();
+        if (userClicked) showToast((res && res.error) || 'Could not detect your location', 'warning', 6000);
+    }
+}
+
+function scanUpiQr() {
+    if (!IN_APP) {
+        showToast('QR scanning works in the MLBFD app. Paste a UPI link instead.', 'info');
+        return;
+    }
+    try {
+        window.MLBFDApp.postMessage(JSON.stringify({ type: 'scan_qr' }));
+    } catch (e) {
+        showToast('Could not open the camera', 'error');
+    }
+}
+
+function handleScannedQr(text) {
+    const t = String(text || '').trim();
+    const parseInput = document.getElementById('txn-qr-parse');
+    const receiverInput = document.getElementById('txn-receiver');
+    if (/^upi:\/\/pay\?/i.test(t)) {
+        if (parseInput) {
+            parseInput.value = t.replace(/^upi:\/\/pay\?/i, 'upi://pay?');
+            parseUpiQrLink();
+        }
+        showToast('QR scanned: payee details filled in', 'success');
+    } else if (/^[A-Za-z0-9._\-]{2,}@[A-Za-z0-9.\-]{2,}$/.test(t)) {
+        if (receiverInput) receiverInput.value = t;
+        if (typeof triggerRiskPreview === 'function') triggerRiskPreview();
+        showToast('QR scanned: payee filled in', 'success');
+    } else {
+        showToast('That QR code is not a UPI payment code', 'warning', 6000);
     }
 }

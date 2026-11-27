@@ -268,6 +268,12 @@
                         <div class="card form-card">
                             <h3>Execute Virtual Payment</h3>
                             
+                            <!-- Scan the receiver's QR with the phone camera (visible only inside the MLBFD Android app) -->
+                            <button type="button" class="btn btn-primary" id="btn-scan-qr" onclick="scanUpiQr()"
+                                    style="display: none; width: 100%; justify-content: center; margin-bottom: 14px; gap: 8px;">
+                                <i class="fa-solid fa-camera"></i> Scan receiver's QR code
+                            </button>
+
                             <!-- QR Code Link Auto-Fill Parser -->
                             <div class="form-group" style="margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color);">
                                 <label for="txn-qr-parse"><i class="fa-solid fa-qrcode"></i> Paste UPI QR Link to Auto-Fill</label>
@@ -338,9 +344,14 @@
                                             </div>
                                             <div id="loc-accuracy-display" style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Source: GPS (Accuracy: --)</div>
                                         </div>
-                                        <button type="button" class="btn btn-secondary btn-sm" onclick="openMapModal()" style="font-size: 11px; padding: 5px 12px; border-radius: 6px;">
-                                            <i class="fa-solid fa-map-pin"></i> Pin on Map
-                                        </button>
+                                        <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end;">
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="detectLocation(true)" style="font-size: 11px; padding: 5px 12px; border-radius: 6px;">
+                                                <i class="fa-solid fa-location-crosshairs"></i> Detect
+                                            </button>
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="openMapModal()" style="font-size: 11px; padding: 5px 12px; border-radius: 6px;">
+                                                <i class="fa-solid fa-map-pin"></i> Pin on Map
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
 
